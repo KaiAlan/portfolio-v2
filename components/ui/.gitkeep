@@ -1,0 +1,2 @@
+# shadcn primitives land here (npx shadcn@latest add ...).
+# Kept so the alias in components.json resolves on a fresh clone.

@@ -1,29 +1,93 @@
 @import "tailwindcss";
 
-/* Light only — decision #8. The work is maximalist; the frame shouldn't
-   compete, and a theme toggle is a maintenance tax for no benefit here.
-   No prefers-color-scheme block on purpose. */
-:root {
-  --background: #ffffff;
-  --foreground: #111111;
+/* ---------------------------------------------------------------------
+   Design tokens — docs/COSMOS-DESIGN.md
+   Never inline a hex in a component; reference a token.
+
+   Light only (decision #8). No prefers-color-scheme block on purpose:
+   the warm canvas IS the brand, and a dark variant would need its own
+   pass rather than an inversion.
+   --------------------------------------------------------------------- */
+@theme {
+  /* Ink */
+  --color-ink: #000000;
+  --color-ink-soft: #1d1717;
+  --color-muted: #383838;
+  --color-muted-soft: #414141;
+  --color-on-dark: #ffffff;
+
+  /* Surfaces — canvas is warm off-white, never pure white. */
+  --color-canvas: #f7f5f3;
+  --color-surface: #f8f8f7;
+  --color-surface-alt: #f5f5f5;
+  --color-surface-warm: #e8e6e4;
+  --color-surface-dark: #191919;
+
+  /* Borders */
+  --color-hairline: #e0e0e0;
+  --color-border-strong: #d0d0d0;
+
+  /* Radius — 16px for all imagery, pill for all interactive chrome. */
+  --radius-sm: 11px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 19px;
+  --radius-pill: 9999px;
+
+  /* One soft wide shadow carries every lift. There are no bordered cards. */
+  --shadow-float: 0 6px 44px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.03);
+
+  --font-display: var(--font-cosmos), Spectral, Georgia, serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-display);
 }
 
-/* The masonry positions cards absolutely; nothing should ever cause a
-   sideways scroll. */
+/* The masonry positions cards absolutely; nothing should cause sideways
+   scroll. */
 html,
 body {
   overflow-x: hidden;
+}
+
+/* ---------------------------------------------------------------------
+   Type scale. Hierarchy comes from size and weight within ONE family —
+   never from switching typefaces. Negative tracking is ~-0.05em and
+   scales with size; the display weight stays light, which is the whole
+   signature. Never set a headline bold.
+   --------------------------------------------------------------------- */
+.type-display-xl {
+  font-size: clamp(2.5rem, 6vw, 74px);
+  font-weight: 350;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.type-display-lg {
+  font-size: clamp(2rem, 5vw, 66px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.type-body {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.type-button {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.286;
+  letter-spacing: -0.02em;
 }

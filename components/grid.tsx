@@ -82,7 +82,10 @@ export function Grid({ projects }: { projects: Project[] }) {
 
   return (
     <>
-      <nav className="mb-6 flex flex-wrap gap-2" aria-label="Filter by category">
+      <nav
+        className="mb-8 inline-flex flex-wrap items-center gap-1 rounded-pill bg-surface p-1"
+        aria-label="Filter by category"
+      >
         <FilterChip label="All" active={active === null} onClick={() => setCategory(null)} />
         {available.map((category) => (
           <FilterChip
@@ -114,7 +117,7 @@ export function Grid({ projects }: { projects: Project[] }) {
       </LayoutGroup>
 
       {filtered.length === 0 && (
-        <p className="py-16 text-center text-sm text-black/50">Nothing here yet.</p>
+        <p className="type-body py-16 text-center text-muted">Nothing here yet.</p>
       )}
     </>
   )
@@ -134,16 +137,16 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className="relative rounded-full px-3 py-1.5 text-sm transition-colors"
+      className="type-button relative rounded-pill px-4 py-2.5 transition-colors"
     >
       {active && (
         <motion.span
           layoutId="filter-pill"
-          className="absolute inset-0 rounded-full bg-black"
+          className="absolute inset-0 rounded-pill bg-ink"
           transition={{ type: 'spring', stiffness: 400, damping: 35 }}
         />
       )}
-      <span className={`relative ${active ? 'text-white' : 'text-black/60 hover:text-black'}`}>
+      <span className={`relative ${active ? 'text-on-dark' : 'text-muted hover:text-ink'}`}>
         {label}
       </span>
     </button>

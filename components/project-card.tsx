@@ -85,7 +85,7 @@ export function ProjectCard({
       <Link
         href={`/work/${project.slug}`}
         scroll={false}
-        className="group relative block h-full w-full overflow-hidden rounded-lg bg-black/5"
+        className="group relative block h-full w-full overflow-hidden rounded-lg bg-surface-warm"
         aria-label={project.title}
       >
         {/* The poster is always rendered. For video cards it is the frame the
@@ -120,8 +120,9 @@ export function ProjectCard({
           </video>
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1 p-3 opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-          <p className="text-sm text-white drop-shadow-sm">{project.title}</p>
+        {/* Chrome stays monochrome; the imagery carries all the colour. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-4 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <p className="type-button text-on-dark">{project.title}</p>
         </div>
       </Link>
     </motion.div>

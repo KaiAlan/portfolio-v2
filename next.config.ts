@@ -1,7 +1,9 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+  // Partial prerendering + the `use cache` directive. The whole data layer
+  // in lib/contentful.ts depends on this being on.
+  cacheComponents: true,
+}
 
-export default nextConfig;
+export default nextConfig

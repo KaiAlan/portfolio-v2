@@ -5,10 +5,11 @@ import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { imageUrl, srcSet, videoSources } from '@/lib/media'
 import type { Project } from '@/lib/types'
-import type { Placement } from './masonry'
+import { cn } from '@/lib/utils'
+import type { Placement } from './masonry-layout'
 
 /**
- * One card in the grid.
+ * One card in the feed.
  *
  * Video behaviour splits on `featured`:
  *   featured  -> autoplays, but only while on screen. An IntersectionObserver
@@ -18,16 +19,15 @@ import type { Placement } from './masonry'
  *
  * Both are muted + playsInline + loop, which is what lets iOS autoplay at all.
  */
-export function ProjectCard({
-  project,
-  placement,
-  priority,
-}: {
+
+type ProjectCardProps = {
   project: Project
-  /** null until the masonry has measured itself; see components/masonry.tsx. */
+  /** null until the masonry has measured itself. */
   placement: Placement | null
   priority: boolean
-}) {
+}
+
+const ProjectCard = ({ project, placement, priority }: ProjectCardProps) => {
   const shot = project.coverShot
   const isVideo = shot.kind === 'video' && (shot.videoMp4Url || shot.videoWebmUrl)
 
@@ -63,12 +63,14 @@ export function ProjectCard({
     }
   }, [hovering, onScreen, project.featured])
 
+  const playing = project.featured ? onScreen : hovering
+
   return (
     <motion.div
       layout
       layoutId={`card-${project.id}`}
       transition={{ type: 'spring', stiffness: 350, damping: 40 }}
-      className={placement ? 'absolute' : 'relative'}
+      className={cn(placement ? 'absolute' : 'relative')}
       style={
         placement
           ? {
@@ -85,7 +87,7 @@ export function ProjectCard({
       <Link
         href={`/work/${project.slug}`}
         scroll={false}
-        className="group relative block h-full w-full overflow-hidden rounded-lg bg-surface-warm"
+        className="group relative block h-full w-full overflow-hidden rounded-card bg-surface-warm"
         aria-label={project.title}
       >
         {/* The poster is always rendered. For video cards it is the frame the
@@ -93,7 +95,7 @@ export function ProjectCard({
         <img
           src={imageUrl(shot.imageUrl, 900)}
           srcSet={srcSet(shot.imageUrl, shot.width)}
-          sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, (max-width: 1400px) 25vw, 20vw"
+          sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, (max-width: 1280px) 25vw, (max-width: 1700px) 20vw, 16vw"
           alt={project.title}
           width={shot.width}
           height={shot.height}
@@ -111,8 +113,10 @@ export function ProjectCard({
             playsInline
             preload={project.featured ? 'metadata' : 'none'}
             poster={imageUrl(shot.imageUrl, 900)}
-            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 data-[playing=true]:opacity-100"
-            data-playing={project.featured ? onScreen : hovering}
+            className={cn(
+              'absolute inset-0 h-full w-full object-cover transition-opacity duration-300',
+              playing ? 'opacity-100' : 'opacity-0',
+            )}
           >
             {videoSources(shot).map((source) => (
               <source key={source.src} src={source.src} type={source.type} />
@@ -121,10 +125,12 @@ export function ProjectCard({
         )}
 
         {/* Chrome stays monochrome; the imagery carries all the colour. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-4 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-3 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <p className="type-button text-on-dark">{project.title}</p>
         </div>
       </Link>
     </motion.div>
   )
 }
+
+export default ProjectCard

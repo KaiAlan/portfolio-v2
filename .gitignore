@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template of required vars belongs in the repo. It holds
+# names only, never values.
+!.env.example
 
 # vercel
 .vercel

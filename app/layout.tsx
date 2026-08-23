@@ -31,12 +31,13 @@ export const metadata: Metadata = {
   description: 'Selected work by Kaialan — product design, graphics, creatives.',
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default function RootLayout({ children, modal }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-canvas">
         <Navbar />
         {children}
+        {modal}
       </body>
     </html>
   )

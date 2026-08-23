@@ -45,6 +45,9 @@ const Feed = ({ projects }: FeedProps) => {
 
   const byId = useMemo(() => new Map(filtered.map((p) => [p.id, p])), [filtered])
 
+  // The lightbox reads this to scope prev/next to what is on screen.
+  const query = active ? `?c=${encodeURIComponent(active)}` : ''
+
   return (
     <>
       <FilterTabs categories={available} active={active} onChange={setCategory} />
@@ -62,6 +65,7 @@ const Feed = ({ projects }: FeedProps) => {
                 placement={placement}
                 // Roughly the first viewport: fetch eagerly, lazy-load the rest.
                 priority={index < 8}
+                href={`/work/${project.slug}${query}`}
               />
             )
           }}

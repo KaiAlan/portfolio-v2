@@ -29,12 +29,12 @@ export type Placement = { left: number; top: number; width: number; height: numb
 
 const GUTTER = 16
 
+/** Container width, not viewport — the page has ~72px of gutter at lg. */
 function columnCount(width: number) {
-  if (width < 560) return 2
-  if (width < 900) return 3
-  if (width < 1280) return 4
-  if (width < 1700) return 5
-  return 6
+  if (width < 600) return 1
+  if (width < 900) return 2
+  if (width < 1200) return 3
+  return 4
 }
 
 function computeLayout(items: MasonryItem[], width: number) {
@@ -82,7 +82,7 @@ const MasonryLayout = ({ items, renderItem, className }: MasonryLayoutProps) => 
       ref={ref}
       className={cn(
         'w-full',
-        measured ? 'relative' : 'grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5',
+        measured ? 'relative' : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
         className,
       )}
       style={measured ? { height: height > 0 ? height : undefined } : undefined}

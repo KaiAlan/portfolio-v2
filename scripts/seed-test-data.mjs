@@ -1,15 +1,22 @@
 /**
- * P0.6 — test fixtures with the edge cases the grid has to survive.
+ * P0.6 — test fixtures.
  *
  *   npm run seed          create
  *   npm run seed:clean    remove everything this script made
  *
- * Deliberately NOT the real portfolio content. Everything created here is
- * marked (project slugs start `test-`, shot captions and asset titles start
- * `[test]`) so it can be removed cleanly before the real 15 go in at P2.
+ * 30 projects, sized and shaped to make the masonry judgeable: portrait
+ * dominant like the real product surface, with landscape and square mixed
+ * in, a spread of shot counts, and both video playback paths.
  *
- * Images come from picsum.photos via Contentful's external-URL ingest, so
- * dimensions are whatever Contentful measures, not numbers we assert.
+ * Imagery comes from LoremFlickr by subject tag (posters, typography,
+ * fashion editorial, exhibitions, sculpture) so the grid reads like a
+ * design portfolio rather than a stock landscape reel. `lock` makes each
+ * pick deterministic, so re-running produces the same set.
+ *
+ * These are Flickr images standing in for real work. They are marked
+ * (project slugs start `test-`, shot captions and asset titles start
+ * `[test]`) and `npm run seed:clean` removes all of them before the real
+ * content goes in at P2.
  */
 import { createClient } from 'contentful-management'
 
@@ -30,7 +37,7 @@ const client = createClient(
 )
 
 /** CMA allows 7 req/s. */
-const pause = () => new Promise((r) => setTimeout(r, 180))
+const pause = () => new Promise((r) => setTimeout(r, 160))
 
 /** Locale-wrap, dropping empties so optional fields stay genuinely absent. */
 const L = (obj) =>
@@ -47,30 +54,49 @@ const SAMPLE_MP4 =
 const SAMPLE_WEBM =
   'https://test-videos.co.uk/vids/bigbuckbunny/webm/vp9/360/Big_Buck_Bunny_1_10s_1MB.webm'
 
-/** key: [seed, width, height] — a deliberate spread of aspect ratios. */
-const SHOTS = {
-  tall: ['tall', 800, 1400],
-  portrait: ['portrait', 900, 1200],
-  square: ['square', 1000, 1000],
-  wide: ['wide', 1600, 900],
-  ultrawide: ['ultrawide', 2000, 700],
-  short: ['short', 1400, 600],
-  smallSquare: ['smallsq', 600, 600],
-  bigPortrait: ['bigport', 1200, 1800],
+/** Subject tags, chosen to match the reference: art, fashion, graphics. */
+const TAGS = {
+  poster: 'poster,typography',
+  type: 'typography,lettering',
+  graphic: 'graphicdesign',
+  fashion: 'fashion,editorial',
+  runway: 'fashion,runway',
+  art: 'exhibition,art',
+  sculpture: 'sculpture,gallery',
+  print: 'magazine,editorial',
+  brand: 'branding,identity',
+  textile: 'textile,pattern',
+  still: 'stilllife,studio',
+  gallery: 'installation,museum',
 }
 
-async function makeAsset(key) {
-  const [seed, w, h] = SHOTS[key]
+/** Portrait-dominant, as the real grid is. */
+const SHAPES = {
+  tall: [880, 1320],
+  portrait: [900, 1200],
+  book: [880, 1100],
+  square: [1000, 1000],
+  wide: [1400, 950],
+  pano: [1500, 850],
+}
+
+let lockCounter = 100
+const nextLock = () => lockCounter++
+
+async function makeAsset(tag, shape, label) {
+  const [w, h] = SHAPES[shape]
+  const lock = nextLock()
+
   let asset = await client.asset.create(
     {},
     {
       fields: {
-        title: { [LOCALE]: '[test] ' + key + ' ' + w + 'x' + h },
+        title: { [LOCALE]: `[test] ${label} ${w}x${h}` },
         file: {
           [LOCALE]: {
             contentType: 'image/jpeg',
-            fileName: 'test-' + seed + '.jpg',
-            upload: 'https://picsum.photos/seed/' + seed + '/' + w + '/' + h,
+            fileName: `test-${lock}.jpg`,
+            upload: `https://loremflickr.com/${w}/${h}/${TAGS[tag]}?lock=${lock}`,
           },
         },
       },
@@ -84,14 +110,14 @@ async function makeAsset(key) {
   return { id: asset.sys.id, width: image.width, height: image.height }
 }
 
-async function makeShot(assetKey, options = {}) {
-  const { kind = 'image', mp4, webm, caption } = options
-  const asset = await makeAsset(assetKey)
+async function makeShot(tag, shape, label, options = {}) {
+  const { kind = 'image', mp4, webm } = options
+  const asset = await makeAsset(tag, shape, label)
   const entry = await client.entry.create(
     { contentTypeId: 'shot' },
     {
       fields: L({
-        caption: '[test] ' + (caption ?? assetKey),
+        caption: `[test] ${label}`,
         kind,
         image: link(asset.id, 'Asset'),
         videoMp4Url: mp4,
@@ -103,15 +129,110 @@ async function makeShot(assetKey, options = {}) {
   )
   await client.entry.publish({ entryId: entry.sys.id }, entry)
   await pause()
-  return entry.sys.id
+  return link(entry.sys.id)
 }
 
-async function makeProject(fields) {
-  const entry = await client.entry.create({ contentTypeId: 'project' }, { fields: L(fields) })
-  await client.entry.publish({ entryId: entry.sys.id }, entry)
-  await pause()
-  console.log('  project  ' + fields.slug)
-  return entry.sys.id
+/* ------------------------------------------------------------------ *
+ * The 30. Shapes are deliberately uneven so column balancing is
+ * visible, and metadata density varies so empty rows get exercised.
+ * ------------------------------------------------------------------ */
+
+const PROJECTS = [
+  { t: 'Vantage Identity', tag: 'brand', shape: 'portrait', cat: 'Graphics & Socials', year: 2025, extra: 3, tools: ['Illustrator'], client: 'Vantage' },
+  { t: 'Nocturne Poster Series', tag: 'poster', shape: 'tall', cat: 'Creatives', year: 2025, extra: 5, type: 'Series' },
+  { t: 'Halcyon Editorial', tag: 'print', shape: 'book', cat: 'Creatives', year: 2024, extra: 2 },
+  { t: 'Meridian App', tag: 'graphic', shape: 'portrait', cat: 'Product design', year: 2025, extra: 4, tools: ['Figma', 'Framer'], client: 'Meridian', links: [{ label: 'Live', url: 'https://example.com' }] },
+  { t: 'Atelier Lookbook', tag: 'fashion', shape: 'tall', cat: 'Creatives', year: 2024, extra: 6 },
+  { t: 'Static Bloom', tag: 'art', shape: 'square', cat: 'Creatives', year: 2023 },
+  { t: 'Kern & Counter', tag: 'type', shape: 'portrait', cat: 'Graphics & Socials', year: 2025, extra: 2, type: 'Type study' },
+  { t: 'Wavelength Studio', tag: 'brand', shape: 'wide', cat: 'Framer', year: 2025, tools: ['Framer'], links: [{ label: 'Visit', url: 'https://example.com' }] },
+  { t: 'Concrete Season', tag: 'sculpture', shape: 'portrait', cat: 'Creatives', year: 2024, extra: 3 },
+  { t: 'Pallas Runway', tag: 'runway', shape: 'tall', cat: 'Creatives', year: 2025, video: 'featured' },
+  { t: 'Grain & Weave', tag: 'textile', shape: 'square', cat: 'Graphics & Socials', year: 2023, extra: 2 },
+  { t: 'Fold Magazine', tag: 'print', shape: 'book', cat: 'Creatives', year: 2024, extra: 4, type: 'Editorial' },
+  { t: 'Orbit Dashboard', tag: 'graphic', shape: 'wide', cat: 'Product design', year: 2025, extra: 3, tools: ['Figma'], client: 'Orbit' },
+  { t: 'Quiet Objects', tag: 'still', shape: 'portrait', cat: 'Creatives', year: 2023 },
+  { t: 'Vessel', tag: 'gallery', shape: 'pano', cat: 'Creatives', year: 2024 },
+  { t: 'Type Specimen No.4', tag: 'type', shape: 'tall', cat: 'Graphics & Socials', year: 2025, extra: 2 },
+  { t: 'Northline Rebrand', tag: 'brand', shape: 'square', cat: 'Graphics & Socials', year: 2024, extra: 3, client: 'Northline' },
+  { t: 'Soft Machine', tag: 'art', shape: 'portrait', cat: 'Creatives', year: 2025, video: 'hover' },
+  { t: 'Cassette Culture', tag: 'poster', shape: 'book', cat: 'Creatives', year: 2023, extra: 2 },
+  { t: 'Lumen Site', tag: 'graphic', shape: 'wide', cat: 'Framer', year: 2025, tools: ['Framer'], links: [{ label: 'Visit', url: 'https://example.com' }] },
+  { t: 'Anatomy of a Grid', tag: 'poster', shape: 'tall', cat: 'Graphics & Socials', year: 2024, extra: 4, type: 'Study' },
+  { t: 'Marrow', tag: 'sculpture', shape: 'portrait', cat: 'Creatives', year: 2023 },
+  { t: 'Season Mix', tag: 'fashion', shape: 'book', cat: 'Creatives', year: 2025, extra: 3 },
+  { t: 'Foundry Checkout', tag: 'graphic', shape: 'portrait', cat: 'Product design', year: 2024, extra: 2, tools: ['Figma'], client: 'Foundry' },
+  { t: 'Paper Cuts', tag: 'print', shape: 'square', cat: 'Creatives', year: 2023 },
+  { t: 'Undertow', tag: 'art', shape: 'pano', cat: 'Creatives', year: 2024, video: 'hover' },
+  { t: 'Signal Mark', tag: 'brand', shape: 'square', cat: 'Graphics & Socials', year: 2025, extra: 2 },
+  { t: 'Hall of Mirrors', tag: 'gallery', shape: 'portrait', cat: 'Creatives', year: 2024, extra: 5 },
+  { t: 'Nine Studies', tag: 'textile', shape: 'tall', cat: 'Creatives', year: 2023, extra: 8, type: 'Series' },
+  { t: 'Kaialan.com', tag: 'graphic', shape: 'wide', cat: 'Framer', year: 2025, tools: ['Next.js', 'Framer'], client: 'Self' },
+]
+
+const slugify = (title) =>
+  'test-' +
+  title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+async function seed() {
+  console.log(`Seeding ${PROJECTS.length} projects...`)
+
+  for (const [index, spec] of PROJECTS.entries()) {
+    const isVideo = Boolean(spec.video)
+    const cover = await makeShot(
+      spec.tag,
+      spec.shape,
+      spec.t,
+      isVideo
+        ? {
+            kind: 'video',
+            mp4: SAMPLE_MP4,
+            // One video deliberately ships without WebM.
+            webm: spec.video === 'featured' ? SAMPLE_WEBM : undefined,
+          }
+        : {},
+    )
+
+    const shots = [cover]
+    for (let i = 0; i < (spec.extra ?? 0); i++) {
+      shots.push(await makeShot(spec.tag, i % 2 ? 'portrait' : 'book', `${spec.t} ${i + 2}`))
+    }
+
+    await client.entry
+      .create(
+        { contentTypeId: 'project' },
+        {
+          fields: L({
+            title: spec.t,
+            slug: slugify(spec.t),
+            description: `${spec.t} — placeholder record for layout testing.`,
+            category: spec.cat,
+            tags: spec.tags,
+            year: spec.year,
+            type: spec.type,
+            tools: spec.tools,
+            client: spec.client,
+            links: spec.links,
+            coverShot: cover,
+            shots,
+            featured: spec.video === 'featured',
+            published: true,
+          }),
+        },
+      )
+      .then(async (entry) => {
+        await client.entry.publish({ entryId: entry.sys.id }, entry)
+        await pause()
+      })
+
+    console.log(`  ${String(index + 1).padStart(2)}/${PROJECTS.length}  ${spec.t} (${shots.length} shots)`)
+  }
+
+  await ensureSiteSettings()
+  console.log('Seed complete.')
 }
 
 /** Singleton. Created once; never removed by --clean, it is real config. */
@@ -134,137 +255,6 @@ async function ensureSiteSettings() {
   console.log('  siteSettings created')
 }
 
-async function seed() {
-  console.log('Seeding test fixtures...')
-
-  // 1. One extreme-portrait image, every metadata row populated.
-  const tall = await makeShot('tall')
-  await makeProject({
-    title: 'Tall Single',
-    slug: 'test-tall-single',
-    description:
-      'Single extreme-portrait shot. Exercises the tallest card the masonry has to place, and a fully populated metadata rail.',
-    category: 'Product design',
-    tags: ['ui', 'mobile'],
-    year: 2025,
-    type: 'Concept',
-    tools: ['Figma', 'Framer'],
-    client: 'Acme',
-    links: [
-      { label: 'Live site', url: 'https://example.com' },
-      { label: 'Case study', url: 'https://example.com/case' },
-    ],
-    coverShot: link(tall),
-    shots: [link(tall)],
-    featured: false,
-    published: true,
-  })
-
-  // 2. Four wide shots, almost no metadata — proves empty rows are skipped.
-  const wides = []
-  for (const key of ['wide', 'ultrawide', 'short', 'square']) {
-    wides.push(await makeShot(key))
-  }
-  await makeProject({
-    title: 'Wide Multi',
-    slug: 'test-wide-multi',
-    description: 'Four landscape shots of differing ratios. Sparse metadata on purpose.',
-    category: 'Graphics & Socials',
-    year: 2024,
-    coverShot: link(wides[0]),
-    shots: wides.map((id) => link(id)),
-    featured: false,
-    published: true,
-  })
-
-  // 3. Featured video — the autoplay path.
-  const videoCover = await makeShot('square', {
-    kind: 'video',
-    mp4: SAMPLE_MP4,
-    webm: SAMPLE_WEBM,
-    caption: 'featured video cover',
-  })
-  const still = await makeShot('portrait')
-  await makeProject({
-    title: 'Video Featured',
-    slug: 'test-video-featured',
-    description: 'Featured, so it autoplays in the grid and must pause off-viewport.',
-    category: 'Creatives',
-    tags: ['motion'],
-    year: 2025,
-    tools: ['After Effects'],
-    coverShot: link(videoCover),
-    shots: [link(videoCover), link(still)],
-    featured: true,
-    published: true,
-  })
-
-  // 4. Non-featured video, MP4 only — hover-to-play, no WebM fallback.
-  const hoverVideo = await makeShot('wide', {
-    kind: 'video',
-    mp4: SAMPLE_MP4,
-    caption: 'hover video, mp4 only',
-  })
-  await makeProject({
-    title: 'Video Hover',
-    slug: 'test-video-hover',
-    description: 'Plays on hover only, and has no WebM source.',
-    category: 'Framer',
-    year: 2024,
-    client: 'Self',
-    coverShot: link(hoverVideo),
-    shots: [link(hoverVideo)],
-    featured: false,
-    published: true,
-  })
-
-  // 5. Eight mixed shots — the heaviest detail view.
-  const many = []
-  for (const key of [
-    'bigPortrait',
-    'smallSquare',
-    'wide',
-    'tall',
-    'short',
-    'portrait',
-    'ultrawide',
-    'square',
-  ]) {
-    many.push(await makeShot(key))
-  }
-  await makeProject({
-    title: 'Square Many',
-    slug: 'test-square-many',
-    description: 'Eight shots, every orientation. Stresses the detail scroll and prev/next.',
-    category: 'Creatives',
-    tags: ['grid', 'stress'],
-    year: 2023,
-    type: 'Series',
-    tools: ['Photoshop', 'Blender'],
-    links: [{ label: 'Behance', url: 'https://behance.net' }],
-    coverShot: link(many[0]),
-    shots: many.map((id) => link(id)),
-    featured: false,
-    published: true,
-  })
-
-  // 6. An unpublished project — must never reach the site.
-  const hidden = await makeShot('smallSquare', { caption: 'unpublished' })
-  await makeProject({
-    title: 'Unpublished Draft',
-    slug: 'test-unpublished',
-    description: 'published=false. Should be absent from every query.',
-    category: 'Creatives',
-    coverShot: link(hidden),
-    shots: [link(hidden)],
-    featured: false,
-    published: false,
-  })
-
-  await ensureSiteSettings()
-  console.log('Seed complete.')
-}
-
 async function removeEntity(kind, id) {
   const api = kind === 'asset' ? client.asset : client.entry
   const idKey = kind === 'asset' ? 'assetId' : 'entryId'
@@ -282,12 +272,13 @@ async function clean() {
 
   // Projects first — they hold the references to the shots.
   const projects = await client.entry.getMany({ query: { content_type: 'project', limit: 1000 } })
+  let projectCount = 0
   for (const p of projects.items) {
-    const slug = String(p.fields?.slug?.[LOCALE] ?? '')
-    if (!slug.startsWith('test-')) continue
+    if (!String(p.fields?.slug?.[LOCALE] ?? '').startsWith('test-')) continue
     await removeEntity('entry', p.sys.id)
-    console.log('  removed project ' + slug)
+    projectCount++
   }
+  console.log(`  removed ${projectCount} projects`)
 
   const shots = await client.entry.getMany({ query: { content_type: 'shot', limit: 1000 } })
   let shotCount = 0
@@ -296,7 +287,7 @@ async function clean() {
     await removeEntity('entry', s.sys.id)
     shotCount++
   }
-  console.log('  removed ' + shotCount + ' shots')
+  console.log(`  removed ${shotCount} shots`)
 
   const assets = await client.asset.getMany({ query: { limit: 1000 } })
   let assetCount = 0
@@ -305,7 +296,7 @@ async function clean() {
     await removeEntity('asset', a.sys.id)
     assetCount++
   }
-  console.log('  removed ' + assetCount + ' assets')
+  console.log(`  removed ${assetCount} assets`)
   console.log('Clean complete. siteSettings left in place.')
 }
 

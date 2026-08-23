@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import NavLinks from './nav-links'
+import { Suspense } from 'react'
+import NavLinks, { NavLinksList } from './nav-links'
 
 /**
  * Full-bleed sticky header. Sits directly on the canvas with no border and
@@ -16,7 +17,9 @@ const Navbar = () => (
         <Link href="/" className="type-body font-medium tracking-tight text-ink">
           Kaialan
         </Link>
-        <NavLinks />
+        <Suspense fallback={<NavLinksList pathname={null} />}>
+          <NavLinks />
+        </Suspense>
       </div>
 
       <div className="flex items-center gap-1">

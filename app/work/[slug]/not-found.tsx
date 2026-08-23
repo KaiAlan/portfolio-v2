@@ -9,10 +9,12 @@ import Link from 'next/link'
  * response streams — deferred until there is a reason to pay for it.
  */
 
-const NotFound = () => (
+const ProjectNotFound = () => (
   <main className="flex w-full flex-1 flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-    <h1 className="type-display-lg">Not found</h1>
-    <p className="type-body text-muted">That page doesn&apos;t exist, or it was unpublished.</p>
+    <h1 className="type-display-lg">Project not found</h1>
+    <p className="type-body text-muted">
+      It may have been unpublished, or the link may have changed.
+    </p>
     <Link
       href="/"
       className="type-button mt-2 rounded-pill bg-ink px-4 py-2 text-on-dark transition-opacity hover:opacity-90"
@@ -22,4 +24,4 @@ const NotFound = () => (
   </main>
 )
 
-export default NotFound
+export default ProjectNotFound

@@ -25,9 +25,11 @@ type ProjectCardProps = {
   /** null until the masonry has measured itself. */
   placement: Placement | null
   priority: boolean
+  /** Carries the active filter so the lightbox can scope prev/next. */
+  href: string
 }
 
-const ProjectCard = ({ project, placement, priority }: ProjectCardProps) => {
+const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) => {
   const shot = project.coverShot
   const isVideo = shot.kind === 'video' && (shot.videoMp4Url || shot.videoWebmUrl)
 
@@ -85,7 +87,7 @@ const ProjectCard = ({ project, placement, priority }: ProjectCardProps) => {
       onHoverEnd={() => setHovering(false)}
     >
       <Link
-        href={`/work/${project.slug}`}
+        href={href}
         scroll={false}
         className="group relative block h-full w-full overflow-hidden rounded-card bg-surface-warm"
         aria-label={project.title}
@@ -95,7 +97,7 @@ const ProjectCard = ({ project, placement, priority }: ProjectCardProps) => {
         <img
           src={imageUrl(shot.imageUrl, 900)}
           srcSet={srcSet(shot.imageUrl, shot.width)}
-          sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, (max-width: 1280px) 25vw, (max-width: 1700px) 20vw, 16vw"
+          sizes="(max-width: 600px) 100vw, (max-width: 900px) 50vw, (max-width: 1200px) 33vw, 25vw"
           alt={project.title}
           width={shot.width}
           height={shot.height}

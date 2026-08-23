@@ -118,26 +118,62 @@ const TYPES = [
   },
 ]
 
-const client = createClient({ accessToken: CONTENTFUL_MANAGEMENT_TOKEN })
-const space = await client.getSpace(CONTENTFUL_SPACE_ID)
-const env = await space.getEnvironment(ENVIRONMENT)
+const client = createClient(
+  { accessToken: CONTENTFUL_MANAGEMENT_TOKEN },
+  // v12 of the SDK returns the plain client; the getSpace().getEnvironment()
+  // chain no longer exists.
+  { type: 'plain', defaults: { spaceId: CONTENTFUL_SPACE_ID, environmentId: ENVIRONMENT } },
+)
+
+/** The SDK reports every failure as a thrown Error whose message is JSON.
+ *  Only a genuine 404 means "not created yet" — anything else must surface. */
+function statusOf(err) {
+  if (typeof err?.status === 'number') return err.status
+  try {
+    return JSON.parse(err?.message ?? '{}').status
+  } catch {
+    return undefined
+  }
+}
+
+// Preflight: a token that can authenticate but not reach the space would
+// otherwise look like an empty space and try to create everything.
+try {
+  await client.space.get({ spaceId: CONTENTFUL_SPACE_ID })
+} catch (err) {
+  if (statusOf(err) === 401) {
+    console.error(
+      [
+        '',
+        `CMA token cannot reach space ${CONTENTFUL_SPACE_ID}.`,
+        'The token is valid but has no organization access grant.',
+        'Contentful -> Account settings -> Personal access tokens ->',
+        'grant it access to your organization, or recreate it and tick the org.',
+        '',
+      ].join('\n'),
+    )
+    process.exit(1)
+  }
+  throw err
+}
 
 for (const def of TYPES) {
   const { id, ...payload } = def
-  let ct = await env.getContentType(id).catch(() => null)
+  const existing = await client.contentType.get({ contentTypeId: id }).catch((err) => {
+    if (statusOf(err) === 404) return null
+    throw err
+  })
 
-  if (ct) {
-    Object.assign(ct, payload)
-    ct = await ct.update()
-    console.log(`updated  ${id}`)
-  } else {
-    ct = await env.createContentTypeWithId(id, payload)
-    console.log(`created  ${id}`)
-  }
+  const saved = existing
+    ? await client.contentType.update({ contentTypeId: id }, { ...existing, ...payload })
+    : await client.contentType.createWithId({ contentTypeId: id }, payload)
 
-  await ct.publish()
+  console.log(`${existing ? 'updated' : 'created'}  ${id}`)
+
+  await client.contentType.publish({ contentTypeId: id }, saved)
   // CMA allows 7 req/s; stay well under it.
   await new Promise((r) => setTimeout(r, 250))
 }
 
-console.log(`\nDone — ${TYPES.length} content types live in ${CONTENTFUL_SPACE_ID}/${ENVIRONMENT}.`)
+console.log(`
+Done — ${TYPES.length} content types live in ${CONTENTFUL_SPACE_ID}/${ENVIRONMENT}.`)

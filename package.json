@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup:contentful": "node --env-file-if-exists=.env.local scripts/contentful-setup.mjs"
+    "setup:contentful": "node --env-file-if-exists=.env.local scripts/contentful-setup.mjs",
+    "seed": "node --env-file-if-exists=.env.local scripts/seed-test-data.mjs",
+    "seed:clean": "node --env-file-if-exists=.env.local scripts/seed-test-data.mjs --clean"
   },
   "dependencies": {
     "contentful": "^11.12.9",

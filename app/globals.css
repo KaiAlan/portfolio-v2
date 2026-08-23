@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
+/* Light only — decision #8. The work is maximalist; the frame shouldn't
+   compete, and a theme toggle is a maintenance tax for no benefit here.
+   No prefers-color-scheme block on purpose. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #111111;
 }
 
 @theme inline {
@@ -12,15 +15,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* The masonry positions cards absolutely; nothing should ever cause a
+   sideways scroll. */
+html,
+body {
+  overflow-x: hidden;
 }

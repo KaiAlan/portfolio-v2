@@ -28,6 +28,17 @@ export async function POST(request: Request) {
   const withRetry = <T>(fn: () => Promise<T>) =>
     retry(fn, { attempts: 4, baseMs: 500, shouldRetry: isRateLimited })
 
+  /** Remove an asset we are about to reject, so a failed upload does not
+   *  accumulate storage. Best-effort: the caller already has a real error to
+   *  report and must not have it replaced by a cleanup failure. */
+  const discard = async (assetId: string) => {
+    try {
+      await client.asset.delete({ spaceId, environmentId, assetId })
+    } catch {
+      // ignore — reporting the original failure matters more
+    }
+  }
+
   try {
     // Read the body ONCE, outside the retry wrapper: a retry must not re-read
     // an already-consumed stream, and `await` cannot appear in a non-async arrow.
@@ -65,6 +76,7 @@ export async function POST(request: Request) {
     const deadline = Date.now() + PROCESS_TIMEOUT_MS
     while (!asset.fields.file?.[LOCALE]?.url) {
       if (Date.now() > deadline) {
+        await discard(asset.sys.id)
         return NextResponse.json(
           { error: `Contentful did not finish processing ${file.name} in time.` },
           { status: 504 },
@@ -74,17 +86,22 @@ export async function POST(request: Request) {
       asset = await client.asset.get({ spaceId, environmentId, assetId: asset.sys.id })
     }
 
-    // v12 plain client takes the version from the payload's sys, not params.
-    await withRetry(() => client.asset.publish({ spaceId, environmentId, assetId: asset.sys.id }, asset))
-
+    // Validate BEFORE publishing. Publishing first and rejecting afterwards
+    // left a published junk asset in the space for every non-image anyone
+    // dropped — against a 50 GB/mo bandwidth cap that is the one limit able to
+    // take the site offline.
     const details = asset.fields.file[LOCALE].details
     const image = details?.image
     if (!image?.width || !image?.height) {
+      await discard(asset.sys.id)
       return NextResponse.json(
         { error: `${file.name} has no image dimensions — is it an image?` },
         { status: 422 },
       )
     }
+
+    // v12 plain client takes the version from the payload's sys, not params.
+    await withRetry(() => client.asset.publish({ spaceId, environmentId, assetId: asset.sys.id }, asset))
 
     return NextResponse.json({
       assetId: asset.sys.id,

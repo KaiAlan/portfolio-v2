@@ -12,6 +12,12 @@ import LoginForm from './login-form'
  *  cookie before anything streams. The check below is defence in depth only —
  *  under Cache Components a `redirect()` here is soft (200 + an RSC payload
  *  instruction), so it must never be relied on as the gate. */
+/** Reads the session, so it blocks like the rest of the studio. It sits
+ *  outside the (studio) group and therefore outside that layout's opt-out,
+ *  so it needs its own — verified in a browser, where the console carried
+ *  Next's blocking-prerender error from getSession on this page. */
+export const instant = false
+
 export const metadata: Metadata = {
   title: 'Studio',
   robots: { index: false, follow: false },

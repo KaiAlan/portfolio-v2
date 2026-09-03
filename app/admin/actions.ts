@@ -11,7 +11,7 @@ import {
   updateEntry,
   VersionConflictError,
 } from '@/lib/cma'
-import { getRawProject, slugExists } from '@/lib/preview'
+import { getRawProject, getSettingsEntry, slugExists } from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
 import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
 
@@ -270,6 +270,37 @@ export async function setCover(projectId: string, shotId: string): Promise<{ err
 
   await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.updatedAt)
 
+  updateTag('projects')
+  return {}
+}
+
+/** ONE write to siteSettings, holding entry IDs. Never a per-entry order
+ *  field — that would be 80 writes instead of 1 — and never slugs, because a
+ *  slug rename would silently drop a project to the end.
+ *
+ *  The array may be partial: applyOrder() ranks anything unlisted at the end,
+ *  so a project created after the last reorder simply falls to the bottom
+ *  rather than breaking the sort. */
+export async function saveOrder(projectIds: string[]): Promise<{ error?: string }> {
+  const settings = await getSettingsEntry()
+  if (!settings) {
+    return { error: 'No siteSettings entry exists. Run npm run setup:contentful.' }
+  }
+
+  try {
+    await updateEntry(settings.sys.id, { projectOrder: projectIds }, settings.sys.updatedAt)
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      return { error: 'The order changed elsewhere. Reload before saving.' }
+    }
+    throw error
+  }
+  await publishEntry(settings.sys.id)
+
+  // getProjects() reads through both tags — it applies the order from
+  // settings to the project list — so a reorder must invalidate both or the
+  // feed keeps serving the old sequence.
+  updateTag('settings')
   updateTag('projects')
   return {}
 }

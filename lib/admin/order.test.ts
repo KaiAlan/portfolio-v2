@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moveItem, toIdArray } from './order'
+import { applyOrder, moveItem, toIdArray } from './order'
 
 describe('moveItem', () => {
   it('moves an item forward', () => {
@@ -33,5 +33,34 @@ describe('toIdArray', () => {
 
   it('handles an empty list', () => {
     expect(toIdArray([])).toEqual([])
+  })
+})
+
+describe('applyOrder', () => {
+  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+
+  it('sorts by the position of each id in the order array', () => {
+    expect(applyOrder(items, ['c', 'a', 'b'])).toEqual([{ id: 'c' }, { id: 'a' }, { id: 'b' }])
+  })
+
+  it('leaves the list alone when no order is set', () => {
+    expect(applyOrder(items, [])).toEqual(items)
+  })
+
+  // A project published after the last reorder is not in the array. It must
+  // fall to the end rather than to the front, and the incoming relative order
+  // of such items must survive.
+  it('pushes unlisted items to the end, keeping their relative order', () => {
+    expect(applyOrder(items, ['c'])).toEqual([{ id: 'c' }, { id: 'a' }, { id: 'b' }])
+  })
+
+  it('ignores ids in the order that no longer exist', () => {
+    expect(applyOrder(items, ['gone', 'b'])).toEqual([{ id: 'b' }, { id: 'a' }, { id: 'c' }])
+  })
+
+  it('does not mutate the input', () => {
+    const input = [{ id: 'a' }, { id: 'b' }]
+    applyOrder(input, ['b', 'a'])
+    expect(input).toEqual([{ id: 'a' }, { id: 'b' }])
   })
 })

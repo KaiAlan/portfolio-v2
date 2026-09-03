@@ -135,3 +135,12 @@ export async function getProjectShots(id: string): Promise<AdminShot[]> {
 export function coverShotId(entry: RawEntry): string | undefined {
   return (entry.fields.coverShot as { sys?: { id?: string } } | undefined)?.sys?.id
 }
+
+/** The single `siteSettings` entry, read uncached so the studio sees the
+ *  draft `projectOrder` rather than the last published one. Returns the raw
+ *  entry, not just the array, because saving the order needs `sys.id` to
+ *  address the write and `sys.updatedAt` for the optimistic lock. */
+export async function getSettingsEntry(): Promise<RawEntry | null> {
+  const res = await previewClient().getEntries({ content_type: 'siteSettings', limit: 1 })
+  return (res.items[0] as unknown as RawEntry) ?? null
+}

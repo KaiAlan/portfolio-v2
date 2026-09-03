@@ -147,14 +147,31 @@ library (search, copy-URL, standalone delete — out of v1 scope); Shop CRUD
 
 ## Unverified
 
-**Nobody has opened this in a browser.** Structure, data and status codes
-are verified by asserting against served HTML; appearance and motion are
-not. Specifically unconfirmed:
+**Opened in a browser for the first time on 2026-09-03** (headless Chromium,
+scripted, not eyeballed live) — feed, category filter, card → lightbox open,
+refresh-inside-lightbox → full detail page, back-navigation, admin login,
+projects list, and the order panel all work. No console errors on any of
+those. Two things surfaced, neither a regression from P3 work — both
+predate it:
 
-- The `layoutId` card → lightbox **morph**. Shared layout animation across
-  a parallel-route boundary is exactly the thing that silently fails to
-  match and degrades to a fade. **Check this first.**
-- Hover-to-play smoothness, filter re-flow feel, spring tuning.
+- **`app/@modal/(.)work/[slug]/page.tsx` (`WorkModal`) trips a Cache
+  Components warning**: `params`/`searchParams` are read outside
+  `<Suspense>` with no `export const instant = false`, so Next logs "Route
+  ... encountered runtime data during prerendering or a navigation" on
+  every open. The navigation still completes and the modal renders
+  correctly — this affects the "instant" classification, not correctness —
+  but it's the same category of issue `components/navbar/navbar.tsx` and
+  every `/admin` page already deliberately handle (see their comments).
+  Worth the same fix here.
+- **Fixture videos fail to load under ORB** (`net::ERR_BLOCKED_BY_ORB`) —
+  both sample URLs (`test-videos.co.uk`, `commondatastorage.googleapis.com`)
+  are cross-origin with no CORS headers Chromium will accept for a
+  `<video>` source. Fixture-only; resolves once real video is served from
+  `cdn.kaialan.com` at P2.
+
+Still genuinely unconfirmed: how the morph **feels** (spring tuning,
+hitch-or-not) and hover-to-play smoothness — a scripted click proves the
+mechanism works, not that it looks right. Judge those live.
 
 ---
 

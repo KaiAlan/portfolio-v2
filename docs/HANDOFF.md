@@ -4,7 +4,7 @@ Written for a session starting cold. Read `PLAN.md` for the full executable
 plan and `CONTEXT.md` for why each decision was made; this file is the
 current state and what to do next.
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-04
 **Repo:** https://github.com/KaiAlan/portfolio-v2 (public, MIT)
 **Local:** `/home/kaialan/portfolio-v2` (WSL2; moved off `C:\home\claude-projects\portfolio` on 2026-09-03)
 
@@ -43,7 +43,10 @@ meant editing code.
 - Contentful space live with four content types: `project`, `shot`,
   `shopItem`, `siteSettings`. Created by `npm run setup:contentful`,
   which is idempotent (re-run prints `updated`).
-- 30 test projects / 88 shots seeded via `npm run seed`.
+- 30 test projects / 88 shots seeded via `npm run seed`. The space holds
+  **104 shots** as of 2026-09-04 — the extra ones were uploaded through the
+  studio. Audited that day: 0 shots unlinked from a project, 0 assets
+  unreferenced by a shot.
 
 ### P1 — Portfolio
 - `lib/contentful.ts` — every CDA read behind `use cache` + `cacheTag` +
@@ -82,10 +85,18 @@ meant editing code.
   takes a pasted link as readily as a bare id. Songs are added, removed and
   reordered on YouTube itself — one source of truth for that list.
 
-  `MusicProvider` mounts in `(site)/layout.tsx`, *not* the root layout: the
-  studio has no player, and mounting one at the document root would put a
-  hidden YouTube iframe inside `/admin`. Verified that playback survives
-  client navigation and that the pill never appears in the studio.
+  `MusicProvider` mounts in the **root layout** (`app/layout.tsx`). It briefly
+  lived in `(site)/layout.tsx` on the reasoning that the studio has no player
+  and a hidden YouTube iframe had no business inside `/admin` — but the pill
+  lives in `Navbar`, which the studio renders too, so `useMusic()` returned
+  null there and the pill rendered nothing. One provider above both subtrees
+  beats a second one inside the studio, which would mean two players fighting.
+  Moved 2026-09-04 (`7c2e0f0`).
+
+  What that buys, precisely: playback survives every *client* navigation — the
+  feed, into a project, between studio tabs. It does **not** survive
+  site → `/admin`, because nothing links the two, so that is a fresh document
+  load. Hoisting cannot fix that and is not meant to.
 
   Live playlist: **"Everyday Vibes"** (`PLbEn9f2FZ8Rk`). Note that id is 13
   characters, not the usual 34 — `parsePlaylistId`'s pattern is deliberately
@@ -147,11 +158,15 @@ below.
   moved among rows already on screen. Used by the order board and the shots
   strip.
 - **The project editor is two columns** (`/admin/projects/[id]`): the work on
-  the left as a `ShotCanvas` — one shot large, one row of thumbnails under it —
+  the left as a `ShotCanvas` — one shot large, thumbnails wrapping under it —
   and the controls on the right, drop zone on top. `ShotCanvas` owns the shot
   state and all three shot actions; `shots-strip.tsx` is presentational and
   handles drag only. A click on a thumbnail now *previews* it, so setting the
-  cover moved to its own hover control.
+  cover moved to its own hover control, next to a delete one. Dragging draws a
+  line in the gap the card would land in — on the target's trailing edge when
+  moving right and its leading edge when moving left, because `moveItem`
+  removes the card before re-inserting it. That is the easiest detail here to
+  get subtly backwards.
 
   The **hero** carries a fixed height (`--studio-hero-h`), sized so it, the
   hint line and the first row of thumbnails all clear the fold; the strip below
@@ -225,9 +240,16 @@ unrelated project-level edit untouched; the reorder write was confirmed
 against Contentful directly and reverted. `npm run build` was also run once
 clean (`rm -rf .next && npm run build`) and the client bundle grepped for
 `CONTENTFUL_MANAGEMENT_TOKEN`, `ADMIN_PASSWORD` and `SESSION_SECRET` — none
-present. **Still unverified: the actual browser UI** — upload progress,
-drag-and-drop feel, the studio's dark theme. Nobody has opened `/admin` in a
-browser yet, same caveat as the public site below.
+present.
+
+**The project editor has since had a real browser pass (2026-09-04)** — see
+the shot-deletion and editor-layout entries below. Upload, publish, both
+delete paths, the hero arrows, the drag drop-indicator and the header's Save
+draft were all driven through the UI in headless Chromium and checked against
+Contentful rather than against the screen. **Still unverified by eye**: upload
+*progress* on a slow connection, how the drag actually feels, and the studio's
+dark theme as a piece of design — a scripted click proves a mechanism works,
+not that it looks right.
 
 **⚠ Do not deploy `/admin` yet.** Auth is a single password behind a
 session cookie — sufficient for localhost, not for the public internet.
@@ -239,7 +261,8 @@ happened.
 **Deferred, with reasons, not gaps:** Cloudflare R2 / presigned uploads /
 video flow (no card on file yet); TOTP + recovery codes + login rate
 limiting beyond what exists (required before any public deploy); the asset
-library (search, copy-URL, standalone delete — out of v1 scope); Shop CRUD
+library (search, copy-URL, browsing — out of v1 scope; note deleting a shot
+now takes its asset with it, so orphans no longer accumulate); Shop CRUD
 (out of v1 scope); `scripts/encode.mjs`.
 
 ---
@@ -479,14 +502,22 @@ mostly not code.
 
 1. **Real work into Contentful.** All 30 projects are fixtures. The studio
    exists precisely so this no longer means editing code — enter ~15 real
-   projects through it. This is the long pole; everything else is an
-   afternoon.
+   projects through it. As of 2026-09-04 it can add, reorder, cover, publish
+   *and delete* shots, so entering real work is no longer blocked on tooling.
+   This is the long pole; everything else is an afternoon.
 2. `npm run dev` and judge the motion by eye — scripted Chromium confirms the
    morph, the lightbox and the player *work*, not that they feel right.
-3. Write the profile card's bio (`TODO(kai)`).
+3. Write the profile card's bio (`TODO(kai)`), and confirm the social handle
+   in `navbar.tsx:29`, which is a guess.
 4. Then, in whatever order suits: P1.9 (OG images) to close out P1, TOTP to
    make `/admin` safe to deploy at all, Shop CRUD, or the account setup that
    unblocks P2 (R2's card, then Vercel).
+
+**Deliberately not done in the editor**, so it does not read as an oversight:
+the hero is not sticky while the form scrolls. Sticking it at `top-0` would
+slide it under the panel's own sticky nav, and the panel-as-scroll-container
+has already produced two bugs (see the Shell entry) — it wants a deliberate
+pass, not a class bolted onto other work.
 
 **Before the site goes public**, two things deliberately deferred rather than
 forgotten:

@@ -80,3 +80,18 @@ export async function getRawProject(id: string): Promise<RawEntry | null> {
   })
   return (res.items[0] as unknown as RawEntry) ?? null
 }
+
+/** A slug is the site's permanent URL for a project, so two projects must
+ *  never share one. `exceptId` lets a project keep its own slug on edit.
+ *
+ *  Queried through the preview client on purpose: a draft already holding the
+ *  slug is invisible to the delivery API, so a delivery-side check would only
+ *  discover the clash at publish time. */
+export async function slugExists(slug: string, exceptId?: string): Promise<boolean> {
+  const res = await previewClient().getEntries({
+    content_type: 'project',
+    'fields.slug': slug,
+    limit: 2,
+  })
+  return res.items.some((item) => (item as unknown as RawEntry).sys.id !== exceptId)
+}

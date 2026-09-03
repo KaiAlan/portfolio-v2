@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { reorderShots, setCover } from '@/app/admin/actions'
 import { moveItem, toIdArray } from '@/lib/admin/order'
+import { useDragAutoScroll } from '@/hooks/use-drag-autoscroll'
 import type { AdminShot } from '@/lib/preview'
 
 /** Native drag-and-drop, no library — matching the repo's zero-extra-deps habit.
@@ -23,6 +24,10 @@ const ShotsStrip = ({
   const [cover, setCoverState] = useState(coverId)
   const [dragging, setDragging] = useState<number | null>(null)
   const [, startTransition] = useTransition()
+
+  // Same reason as the order board: a native drag will not scroll the studio
+  // panel by itself, so a long strip is only reorderable within view.
+  useDragAutoScroll(dragging !== null)
   // Both actions report failure rather than throwing, and both update the UI
   // optimistically. Swallowing the error would leave the screen showing an
   // order or a cover that was never saved.

@@ -5,6 +5,7 @@ import { GripVertical } from 'lucide-react'
 import { saveOrder } from '@/app/admin/actions'
 import { moveItem, targetForInsertion, toIdArray } from '@/lib/admin/order'
 import { cn } from '@/lib/utils'
+import { useDragAutoScroll } from '@/hooks/use-drag-autoscroll'
 import type { AdminProject } from '@/lib/preview'
 import BoardHeader from './board-header'
 import ColumnPicker, { useBoardColumns } from './column-picker'
@@ -43,6 +44,10 @@ const OrderList = ({ projects }: { projects: AdminProject[] }) => {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string>()
   const [isPending, startTransition] = useTransition()
+
+  // Without this the board can only be reordered within the visible rows —
+  // a native drag will not scroll the panel on its own.
+  useDragAutoScroll(dragging !== null)
 
   /** Cancels the drag without reordering — used when it ends anywhere that
    *  isn't a valid gap, so a stray caret never outlives the drag. */

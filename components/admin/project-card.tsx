@@ -38,7 +38,10 @@ const ProjectCard = ({ project, corner, showState = true }: ProjectCardProps) =>
           <img
             src={project.coverUrl}
             alt=""
-            className="max-h-full max-w-full rounded-card object-contain shadow-float"
+            // No shadow. On the site a cover floats above the canvas, but here the
+            // tile behind it is already a distinct surface, so a second lift
+            // just adds a grey halo between the artwork and its own frame.
+            className="max-h-full max-w-full rounded-card object-contain"
           />
         ) : (
           <span className="type-meta text-muted-soft">No cover</span>

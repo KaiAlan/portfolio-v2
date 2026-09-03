@@ -1,5 +1,4 @@
 import OrderList from '@/components/admin/order-list'
-import PlaylistField from '@/components/admin/playlist-field'
 import { getSettingsEntry, listProjects } from '@/lib/preview'
 import { applyOrder } from '@/lib/admin/order'
 
@@ -20,21 +19,8 @@ export default async function OrderPage() {
     ? (settings.fields.projectOrder as string[])
     : []
 
-  const playlistId =
-    typeof settings?.fields.youtubePlaylistId === 'string' ? settings.fields.youtubePlaylistId : ''
-
-  // No heading on the board: the active tab above already names it, and the
+  // No heading: the active tab above already names this board, and the
   // instruction that used to sit under it now rides with the Save button,
   // where the action it describes actually is.
-  //
-  // The playlist sits below rather than above: it is a setting that changes
-  // once a year, and the board is what this tab is for.
-  return (
-    <div className="flex flex-col gap-10">
-      <OrderList projects={applyOrder(live, order)} />
-      <div className="border-t border-hairline pt-8">
-        <PlaylistField initial={playlistId} />
-      </div>
-    </div>
-  )
+  return <OrderList projects={applyOrder(live, order)} />
 }

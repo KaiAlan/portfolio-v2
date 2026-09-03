@@ -7,15 +7,17 @@ import { cn } from '@/lib/utils'
 /**
  * The studio's top-level navigation, as one segmented control.
  *
- * Replaces the sidebar. Three destinations never justified a whole column of
- * chrome, and centring them puts the studio's own navigation on a different
- * axis from the site nav above it — so the two rows never read as one bar.
+ * Replaces the sidebar. A handful of destinations never justified a whole
+ * column of chrome, and centring them puts the studio's own navigation on a
+ * different axis from the site nav above it — so the two rows never read as
+ * one bar.
  */
 
 const TABS = [
   { href: '/admin', label: 'Projects', exact: true },
   { href: '/admin/order', label: 'Order', exact: false },
   { href: '/admin/shop', label: 'Shop', exact: false },
+  { href: '/admin/music', label: 'Music', exact: false },
 ] as const
 
 /**
@@ -30,7 +32,7 @@ export const StudioTabsList = ({ pathname }: { pathname: string | null }) => (
   >
     {TABS.map((tab) => {
       // `/admin` is a prefix of every other tab, so the index one has to match
-      // exactly or it stays lit on all three.
+      // exactly or it stays lit on every one of them.
       const active = pathname
         ? tab.exact
           ? pathname === tab.href

@@ -18,7 +18,7 @@
 - **`middleware.ts` is deprecated in Next 16** — the file is `proxy.ts` with a named export `proxy`.
 - **Use `updateTag(tag)`, never bare `revalidateTag(tag)`** (deprecated without a profile). `updateTag` is Server-Action-only.
 - **CMA is capped at 7 req/s.** Concurrency limit is 3 everywhere.
-- **CMA is optimistically locked** on `sys.version`. Every update must send the version it read.
+- **The optimistic lock is keyed on `sys.updatedAt`, NOT `sys.version`.** The Preview API never returns `version` (CMA-only), so a version-based check compares against `undefined` and silently never fires. Both APIs return `updatedAt`. `version` remains correct where it comes from a *CMA* read (`client.entry.get` / `client.asset.get`) — as in the publish walk.
 - **Contentful entity IDs, not slugs**, in `siteSettings.projectOrder`.
 - **Publish bottom-up:** assets → shots → project. The CDA will not resolve links to unpublished records and `.withoutUnresolvableLinks` drops them silently.
 - Tailwind v4, no config file — tokens live in `app/globals.css`.
@@ -117,7 +117,7 @@ describe('publishState', () => {
   })
 
   it('is draft after unpublishing (publishedVersion is cleared)', () => {
-    expect(publishState({ version: 9, publishedVersion: undefined })).toBe('draft')
+    expect(publishState({ publishedVersion: undefined, updatedAt: '2026-09-01T00:00:00.000Z' })).toBe('draft')
   })
 
   it('is live immediately after publish, when version is publishedVersion + 1', () => {
@@ -156,15 +156,16 @@ Create `lib/admin/publish-state.ts`:
 export type PublishState = 'draft' | 'live' | 'live-edited'
 
 export type EntrySys = {
-  version: number
   publishedVersion?: number
+  publishedAt?: string
+  updatedAt?: string
 }
 
 export function publishState(sys: EntrySys): PublishState {
   if (sys.publishedVersion === undefined) return 'draft'
   // Publishing bumps `version` one past `publishedVersion`, so equality with
   // publishedVersion + 1 means "nothing changed since publish".
-  return sys.version > sys.publishedVersion + 1 ? 'live-edited' : 'live'
+  return sys.updatedAt && sys.updatedAt > sys.publishedAt ? 'live-edited' : 'live'
 }
 
 export const PUBLISH_STATE_LABEL: Record<PublishState, string> = {
@@ -842,7 +843,7 @@ git commit -m "feat: password gate for the studio behind proxy.ts"
 - Consumes: `publishState`, `EntrySys` (Task 1)
 - Produces:
   - `lib/preview.ts`: `type AdminProject = { id: string; title: string; slug: string; category: string; state: PublishState; coverUrl?: string; updatedAt: string }`; `listProjects(): Promise<AdminProject[]>`; `getRawProject(id: string): Promise<RawEntry | null>`
-  - `lib/cma.ts`: `cmaEnv(): CmaEnv` returning `{ client, spaceId, environmentId }`; `createEntry(contentType, fields)`; `updateEntry(entryId, changed, expectedVersion?)` — **merges** `changed` into the entry's CMA fields, throws `VersionConflictError`; `publishEntry(entryId)`; `unpublishEntry(entryId)`; `toEntryLink(idOrResolvedEntity)`; `localize(fields)`; `LOCALE`
+  - `lib/cma.ts`: `cmaEnv(): CmaEnv` returning `{ client, spaceId, environmentId }`; `createEntry(contentType, fields)`; `updateEntry(entryId, changed, expectedUpdatedAt?)` — **merges** `changed` into the entry's CMA fields, throws `VersionConflictError`; `publishEntry(entryId)`; `unpublishEntry(entryId)`; `toEntryLink(idOrResolvedEntity)`; `toAssetLink(idOrResolvedEntity)`; `localize(fields)` (`undefined` keeps, `null` clears); `LOCALE`
 
 - [ ] **Step 1: Create `lib/preview.ts`**
 
@@ -857,7 +858,13 @@ import { createClient } from 'contentful'
 import { publishState, type PublishState } from './admin/publish-state'
 
 export type RawEntry = {
-  sys: { id: string; version: number; publishedVersion?: number; updatedAt: string }
+  sys: {
+    id: string
+    revision: number
+    updatedAt: string
+    publishedAt?: string
+    publishedVersion?: number
+  }
   fields: Record<string, unknown>
 }
 
@@ -997,17 +1004,18 @@ export async function createEntry(contentType: string, fields: Record<string, un
  *  deferred `videoMp4Url` / `videoWebmUrl` — are preserved structurally rather
  *  than by every caller remembering to re-send them.
  *
- *  Pass `expectedVersion` (the version the edit was based on) for optimistic
- *  locking: a mismatch means someone else wrote in the meantime. */
+ *  Pass `expectedUpdatedAt` (the `sys.updatedAt` the edit was based on) for
+ *  optimistic locking: a mismatch means someone else wrote in the meantime.
+ *  Keyed on updatedAt, not version — the Preview API never returns version. */
 export async function updateEntry(
   entryId: string,
   changed: Record<string, unknown>,
-  expectedVersion?: number,
+  expectedUpdatedAt?: string,
 ) {
   const { client, spaceId, environmentId } = cmaEnv()
   const current = await client.entry.get({ spaceId, environmentId, entryId })
 
-  if (expectedVersion !== undefined && current.sys.version !== expectedVersion) {
+  if (expectedUpdatedAt !== undefined && current.sys.updatedAt !== expectedUpdatedAt) {
     throw new VersionConflictError()
   }
 
@@ -1287,13 +1295,15 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
   const fields: Record<string, unknown> = {
     title,
     slug,
-    description: String(formData.get('description') ?? '').trim() || undefined,
+    // null, NOT undefined: updateEntry merges, so undefined would silently
+    // keep the old value when the user empties the field.
+    description: String(formData.get('description') ?? '').trim() || null,
     category,
     tags: csv(formData, 'tags'),
-    year: yearRaw ? Number(yearRaw) : undefined,
-    type: String(formData.get('type') ?? '').trim() || undefined,
+    year: yearRaw ? Number(yearRaw) : null,
+    type: String(formData.get('type') ?? '').trim() || null,
     tools: csv(formData, 'tools'),
-    client: String(formData.get('client') ?? '').trim() || undefined,
+    client: String(formData.get('client') ?? '').trim() || null,
     featured: formData.get('featured') === 'on',
   }
 
@@ -1318,7 +1328,7 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
   // WRONG — those come from the CDA with links already resolved into full
   // entities, and writing them back would corrupt every reference.
   try {
-    await updateEntry(id, fields, existing.sys.version)
+    await updateEntry(id, fields, existing.sys.updatedAt)
   } catch (error) {
     if (error instanceof VersionConflictError) {
       return { error: 'This project changed elsewhere. Reload before saving.' }
@@ -1615,7 +1625,7 @@ export async function publishProject(id: string): Promise<{ error?: string }> {
   // 3. the project itself, with published: true
   const fresh = await getRawProject(id)
   if (!fresh) return { error: 'That project no longer exists.' }
-  await updateEntry(id, { published: true }, fresh.sys.version)
+  await updateEntry(id, { published: true }, fresh.sys.updatedAt)
   await publishEntry(id)
 
   updateTag('projects')
@@ -1628,7 +1638,7 @@ export async function unpublishProject(id: string): Promise<{ error?: string }> 
 
   // Flip the flag and publish that change, so the entry stays readable by the
   // CDA while `published: false` takes it off the site.
-  await updateEntry(id, { published: false }, entry.sys.version)
+  await updateEntry(id, { published: false }, entry.sys.updatedAt)
   await publishEntry(id)
 
   updateTag('projects')
@@ -1828,7 +1838,7 @@ git commit -m "feat: streaming upload handler with processing poll"
 - Modify: `app/admin/actions.ts`, `app/admin/projects/[id]/page.tsx`
 
 **Interfaces:**
-- Consumes: the upload route (Task 10); `createEntry`, `updateEntry`, `toEntryLink`, `getRawProject` (Tasks 6, 8)
+- Consumes: the upload route (Task 10); `createEntry`, `updateEntry`, `toEntryLink`, `toAssetLink`, `getRawProject` (Tasks 6, 8)
 - Produces: `addShots(projectId: string, assets: UploadedAsset[]): Promise<{ error?: string }>`; `type UploadedAsset = { assetId: string; width: number; height: number }`
 
 - [ ] **Step 1: Add `addShots` to `app/admin/actions.ts`**
@@ -1853,7 +1863,7 @@ export async function addShots(
   for (const asset of assets) {
     const shot = await createEntry('shot', {
       kind: 'image',
-      image: { sys: { type: 'Link', linkType: 'Asset', id: asset.assetId } },
+      image: toAssetLink(asset.assetId),
       width: asset.width,
       height: asset.height,
     })
@@ -1871,7 +1881,7 @@ export async function addShots(
   const existingCover = project.fields.coverShot as { sys?: { id?: string } } | undefined
   const coverShot = existingCover ? toEntryLink(existingCover) : created[0]
 
-  await updateEntry(projectId, { shots, coverShot }, project.sys.version)
+  await updateEntry(projectId, { shots, coverShot }, project.sys.updatedAt)
 
   updateTag('projects')
   return {}
@@ -2069,7 +2079,7 @@ export async function reorderShots(
   if (!project) return { error: 'That project no longer exists.' }
 
   const shots = shotIds.map(toEntryLink)
-  await updateEntry(projectId, { shots }, project.sys.version)
+  await updateEntry(projectId, { shots }, project.sys.updatedAt)
 
   updateTag('projects')
   return {}
@@ -2079,7 +2089,7 @@ export async function setCover(projectId: string, shotId: string): Promise<{ err
   const project = await getRawProject(projectId)
   if (!project) return { error: 'That project no longer exists.' }
 
-  await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.version)
+  await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.updatedAt)
 
   updateTag('projects')
   return {}
@@ -2233,7 +2243,7 @@ export async function saveOrder(projectIds: string[]): Promise<{ error?: string 
   const settings = await getSettingsEntry()
   if (!settings) return { error: 'No siteSettings entry exists. Run npm run setup:contentful.' }
 
-  await updateEntry(settings.sys.id, { projectOrder: projectIds }, settings.sys.version)
+  await updateEntry(settings.sys.id, { projectOrder: projectIds }, settings.sys.updatedAt)
   await publishEntry(settings.sys.id)
 
   // getProjects() is tagged with both, and a reorder must invalidate the feed.

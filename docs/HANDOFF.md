@@ -166,9 +166,24 @@ below.
   `?w=1200` variant is rendered by Contentful on first request, so without the
   prefetch every step visibly waited on that render.
 
-  The Save/Publish/Unpublish row sits at the **top** of the right column, not
-  under the last field: the form is taller than the panel, so the actions taken
-  most often were the ones furthest away.
+  Save/Publish/Unpublish live in the **page header**, on the title row beside
+  the back button — not under the last field, where the actions taken most
+  often were the ones furthest away. That is why `project-editor.tsx` is one
+  client component covering header *and* form: the buttons need `pending` and
+  the publish transition, and the header spans the full width above the
+  columns, so the `<form>` element cannot contain it. The buttons reach the
+  form with `form="project-form"` — a submit button may live anywhere in the
+  document as long as it names its form. **Verified that this really drives
+  React 19's `action={formAction}`**, by editing a field through the header
+  button and reading the change back from Contentful; it is not obvious that an
+  external submitter would, so don't "fix" it into a ref and a synthetic
+  submit. `project-fields.tsx` is the inputs alone, so the file holding the
+  save/publish state is not also the file with ten inputs in it.
+
+  Publish is the one coloured button (`--color-live`), because publish state is
+  the single fact in this system worth spending a colour on and Publish is the
+  action whose effect reaches the public site. Save draft stays neutral, and
+  Unpublish stays a ghost so it is never what your eye lands on first.
 - **Buttons get `cursor: pointer` from a base rule in `globals.css`.**
   Tailwind v4's preflight does not set one (verified in its `preflight.css`),
   and the browser default for `<button>` is an arrow — so every button in the

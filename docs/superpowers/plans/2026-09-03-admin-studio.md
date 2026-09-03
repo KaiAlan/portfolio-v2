@@ -269,7 +269,7 @@ export function slugify(input: string): string {
   return input
     .normalize('NFKD')
     // Strip combining marks so "Café" becomes "Cafe", not "Caf".
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')

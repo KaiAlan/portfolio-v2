@@ -53,6 +53,18 @@ meant editing code.
 - `/work/[slug]` detail with metadata rail; all 30 prerendered.
 - Intercepting-route lightbox at `app/@modal/(.)work/[slug]`.
 - `/shop`, `robots.ts`, `sitemap.ts`, `loading`, `not-found`.
+- **P1.8** — nav rebuilt as three pieces with one job each: `primary-links`
+  (routes), `category-links` (the filter — was `filter-tabs`, wrongly living
+  in the feed), `profile-card` (the hover → about overlay P1.8 asked for:
+  bio, socials, a quote). Bar hides on scroll down via
+  `hooks/use-hide-on-scroll.ts`. Lightbox got `lightbox-context.ts` instead
+  of prop-drilling, a two-phase close (media unmounts first so the morph can
+  run before the route actually changes), and a module-level mount counter
+  so arrow-keying between projects doesn't replay the panel's slide-in.
+  Done 2026-09-03 on its own branch (`feat/nav-lightbox-polish`, off `main`
+  — the work predated the studio and was uncommitted through all of P3),
+  merged into this branch same day. **`profile-card.tsx`'s bio is
+  placeholder copy** (`TODO(kai)` in the file) — write it before launch.
 
 ### P3 — The studio (v1, localhost-only)
 Built against `docs/superpowers/plans/2026-09-03-admin-studio.md`, all 14
@@ -136,7 +148,6 @@ library (search, copy-URL, standalone delete — out of v1 scope); Shop CRUD
    domain; v2 does not take it over until we repoint deliberately.
 
 **Code remaining:**
-- P1.8 — nav polish: profile-pic hover → about overlay (copy, links, quote).
 - P1.9 — OG images (`opengraph-image.tsx`), richer metadata.
 - P2 — deploy; replace fixtures with ~15 real projects.
 - P3 hardening — TOTP + recovery codes, before `/admin` can ever be public.
@@ -177,6 +188,21 @@ predate it:
   are cross-origin with no CORS headers Chromium will accept for a
   `<video>` source. Fixture-only; resolves once real video is served from
   `cdn.kaialan.com` at P2.
+
+**`feat/nav-lightbox-polish` merged into this branch same day**, then
+re-verified the same way: `rm -rf .next && npm run build` clean, headless
+Chromium pass with zero console errors across feed, scroll-hide nav, card →
+lightbox open, arrow-key switch, `Escape` close (resolves back to `/`, not
+stuck mid-close), full-page refresh, category filter, and admin
+login/order-panel. One screenshot in that pass showed the lightbox not
+rendering on a fresh open — investigated rather than dismissed: the DOM
+dialog was present and `visible: true` in Playwright's own accessibility
+check at the same timing, and three repeated runs at identical timing all
+rendered correctly. Concluded to be a one-off flake in the test script (a
+screenshot racing a paint), not a product bug — but flagging the method
+here in case it recurs: if `/work/[slug]` ever opens to a bare grid with no
+overlay, check `[role="dialog"]` presence and visibility before assuming
+the DOM is wrong, since in this instance it wasn't.
 
 Still genuinely unconfirmed: how the morph **feels** (spring tuning,
 hitch-or-not) and hover-to-play smoothness — a scripted click proves the
@@ -322,10 +348,12 @@ goes in at P2. It deliberately leaves `siteSettings` alone.
 
 ## Next session
 
-1. `npm run dev`, open it, judge the morph and the motion — public site and
-   `/admin` both still unverified in an actual browser.
+1. `npm run dev`, open it, judge the morph and the motion for real — scripted
+   Chromium confirms the mechanism works, not that it feels right. That's
+   still eyes-only.
 2. Flip the repo private (plan decision #4) — overdue now that P3 auth code
-   is on GitHub. `gh repo edit KaiAlan/portfolio-v2 --visibility private
+   is on GitHub, deliberately deferred to go-live rather than now. `gh repo
+   edit KaiAlan/portfolio-v2 --visibility private
    --accept-visibility-change-consequences`.
-3. Then either P1.8/P1.9 to close out P1, TOTP to make `/admin` safe to
-   eventually deploy, or chase the account setup that unblocks P2.
+3. Then either P1.9 (OG images) to close out P1, TOTP to make `/admin` safe
+   to eventually deploy, or chase the account setup that unblocks P2.

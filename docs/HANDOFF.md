@@ -65,6 +65,31 @@ meant editing code.
   — the work predated the studio and was uncommitted through all of P3),
   merged into this branch same day. **`profile-card.tsx`'s bio is
   placeholder copy** (`TODO(kai)` in the file) — write it before launch.
+- **Nav music player** — a pill in the header: circular cover art, title,
+  artist, prev/play/next, tinted with the colour of what's playing. Design
+  and reasoning in
+  `docs/superpowers/specs/2026-09-03-nav-music-player-design.md`.
+
+  Audio is a **public YouTube playlist through a hidden IFrame player**, not
+  self-hosted files. That sidesteps R2 (still blocked), puts the licence on
+  YouTube, and lifts the catalogue limit. Same architecture `salon.wtf` and
+  `deluxsalon.in` use. The trade — YouTube's terms want a *visible* player —
+  was made knowingly: the player is a real 200×200 box kept in flow, hidden
+  with `opacity-0`, not collapsed to nothing.
+
+  **No new content type and no per-track admin.** One `youtubePlaylistId`
+  field on `siteSettings`, edited on the studio's **Music** tab; the field
+  takes a pasted link as readily as a bare id. Songs are added, removed and
+  reordered on YouTube itself — one source of truth for that list.
+
+  `MusicProvider` mounts in `(site)/layout.tsx`, *not* the root layout: the
+  studio has no player, and mounting one at the document root would put a
+  hidden YouTube iframe inside `/admin`. Verified that playback survives
+  client navigation and that the pill never appears in the studio.
+
+  Live playlist: **"Everyday Vibes"** (`PLbEn9f2FZ8Rk`). Note that id is 13
+  characters, not the usual 34 — `parsePlaylistId`'s pattern is deliberately
+  loose for exactly this reason. Don't "fix" it by asserting a length.
 
 ### P3 — The studio (v1, localhost-only)
 Built against `docs/superpowers/plans/2026-09-03-admin-studio.md`, all 14
@@ -76,7 +101,19 @@ below.
   forged cookie through — see the comment there). Rate-limited login.
   **No TOTP / recovery codes** — deliberately deferred, and the reason it
   stays localhost-only.
-- **Shell**: `app/admin/(studio)/` — sidebar with Projects / Order, dark UI.
+- **Shell**: `app/admin/(studio)/` — a dark frame around the site held as a
+  light panel, with the *real* `Navbar` inside it, so what you edit is
+  visibly what ships. Navigation is a centred segmented control (`studio-tabs`):
+  **Projects · Order · Shop · Music**. It replaced a sidebar.
+
+  **The panel is the scroll container, and much depends on that.** The frame
+  is one viewport tall, the toolbar a fixed 40px, the panel takes the rest and
+  scrolls internally (`min-h-0` + `overflow-y-auto`). Two bugs came from it
+  *not* being one: the panel's rounded top scrolled away leaving a square
+  sticky header as the visible edge, and `--studio-chrome-h` was measured from
+  the viewport while its own comment claimed otherwise, so it was 40px short
+  and every board header overlapped the nav. If sticky offsets inside the
+  studio ever look wrong again, check this first.
 - **Project form**: all fields, drafts save without publishing, optimistic
   locking on `sys.updatedAt` (not `version` — the Preview API never returns
   it). `null` clears a field, `undefined` leaves it alone; the form must
@@ -100,6 +137,20 @@ below.
   the same sequence the site will render, not newest-first.
 - **Cache invalidation**: every mutation calls `updateTag`, never bare
   `revalidateTag` (deprecated without a profile in this Next version).
+- **Boards**: Projects and Order share one `ProjectCard` and `ProjectGrid`, so
+  they cannot drift into two slightly different cards, and a `ColumnPicker`
+  (1–8, stored) that both read. Both apply `applyOrder`, so the studio shows
+  the sequence the feed serves rather than newest-first; drafts aren't in
+  `projectOrder`, so they rank last.
+- **Drag auto-scroll** (`hooks/use-drag-autoscroll.ts`): native HTML5 drag does
+  not reliably auto-scroll a nested scroll container, so cards could only be
+  moved among rows already on screen. Used by the order board and the shots
+  strip.
+- **Shop tab is a deliberate stub.** The tab exists so the studio's navigation
+  doesn't grow a hole later, but `shopItem` entries are still edited in
+  Contentful directly. Wiring it up needs the same form, upload and publish
+  walk projects got — that is its own task, not a restyle.
+- **Music tab**: the `youtubePlaylistId` field. See the player under P1.
 
 **Verified for real, not by inspection** — a disposable `test-e2e-verify`
 project was created, given 4 real uploaded images, published, and deleted;
@@ -147,11 +198,20 @@ library (search, copy-URL, standalone delete — out of v1 scope); Shop CRUD
 3. **Vercel** — link the repo, set env vars. v1 is currently live on this
    domain; v2 does not take it over until we repoint deliberately.
 
+**The real launch blocker is content, not code.** All **30 projects are
+`test-` fixtures — zero real** (verified against Contentful 2026-09-03).
+Images are LoremFlickr, videos are public sample MP4s. Everything below is
+small next to writing and entering the actual work.
+
 **Code remaining:**
-- P1.9 — OG images (`opengraph-image.tsx`), richer metadata.
+- P1.9 — OG images (`opengraph-image.tsx`), richer metadata. Not started.
+- P1.8 leftover — `profile-card.tsx`'s bio is still `TODO(kai)` placeholder
+  copy.
 - P2 — deploy; replace fixtures with ~15 real projects.
 - P3 hardening — TOTP + recovery codes, before `/admin` can ever be public.
   See "P3 — The studio" under Done for what already shipped.
+- Shop CRUD — the studio's Shop tab is a stub; shop items are still edited in
+  Contentful directly.
 - P4 — bulk-import the remaining ~55 projects.
 
 ---
@@ -348,12 +408,24 @@ goes in at P2. It deliberately leaves `siteSettings` alone.
 
 ## Next session
 
-1. `npm run dev`, open it, judge the morph and the motion for real — scripted
-   Chromium confirms the mechanism works, not that it feels right. That's
-   still eyes-only.
-2. Flip the repo private (plan decision #4) — overdue now that P3 auth code
-   is on GitHub, deliberately deferred to go-live rather than now. `gh repo
-   edit KaiAlan/portfolio-v2 --visibility private
-   --accept-visibility-change-consequences`.
-3. Then either P1.9 (OG images) to close out P1, TOTP to make `/admin` safe
-   to eventually deploy, or chase the account setup that unblocks P2.
+The site and studio are built. What stands between here and launch is
+mostly not code.
+
+1. **Real work into Contentful.** All 30 projects are fixtures. The studio
+   exists precisely so this no longer means editing code — enter ~15 real
+   projects through it. This is the long pole; everything else is an
+   afternoon.
+2. `npm run dev` and judge the motion by eye — scripted Chromium confirms the
+   morph, the lightbox and the player *work*, not that they feel right.
+3. Write the profile card's bio (`TODO(kai)`).
+4. Then, in whatever order suits: P1.9 (OG images) to close out P1, TOTP to
+   make `/admin` safe to deploy at all, Shop CRUD, or the account setup that
+   unblocks P2 (R2's card, then Vercel).
+
+**Before the site goes public**, two things deliberately deferred rather than
+forgotten:
+- Flip the repo private (plan decision #4) — P3 auth code is on GitHub.
+  `gh repo edit KaiAlan/portfolio-v2 --visibility private
+  --accept-visibility-change-consequences`
+- TOTP + recovery codes. `/admin` is one password today; that is fine on
+  localhost and not fine on the internet.

@@ -4,6 +4,21 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { logout } from '../login/actions'
 
+/** The studio reads through the Preview API, uncached and on purpose —
+ *  editing against stale data is editing against a lie (lib/preview.ts). So
+ *  navigation into it legitimately blocks, and Cache Components' instant
+ *  validation is asserting something we do not want to be true.
+ *
+ *  On the layout this covers the static-shell check for the whole subtree
+ *  (the highest `instant` in the tree wins for that one). It does NOT cover
+ *  the per-navigation check: every Page segment is validated on its own, so
+ *  each studio page carries its own `instant = false`. Verified — with this
+ *  line alone both /admin and /admin/projects/[id] still warned.
+ *
+ *  Dev-only validation either way; this does not change what ships, and it
+ *  does not make the redirect below a hard one. proxy.ts remains the gate. */
+export const instant = false
+
 export const metadata: Metadata = {
   title: 'Studio',
   robots: { index: false, follow: false },

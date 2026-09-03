@@ -2,6 +2,9 @@ import Link from 'next/link'
 import { listProjects } from '@/lib/preview'
 import StatusPill from '@/components/admin/status-pill'
 
+/** Uncached preview read by design — see the note in the (studio) layout. */
+export const instant = false
+
 export default async function AdminProjectsPage() {
   const projects = await listProjects()
 

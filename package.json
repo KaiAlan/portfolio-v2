@@ -9,7 +9,9 @@
     "lint": "eslint",
     "setup:contentful": "node --env-file-if-exists=.env.local scripts/contentful-setup.mjs",
     "seed": "node --env-file-if-exists=.env.local scripts/seed-test-data.mjs",
-    "seed:clean": "node --env-file-if-exists=.env.local scripts/seed-test-data.mjs --clean"
+    "seed:clean": "node --env-file-if-exists=.env.local scripts/seed-test-data.mjs --clean",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -24,13 +26,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.1.1",
     "contentful-management": "^12.15.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.11"
   }
 }

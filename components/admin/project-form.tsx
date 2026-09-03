@@ -25,7 +25,14 @@ export type ProjectFormValues = {
 }
 
 const CATEGORIES = ['Product design', 'Graphics & Socials', 'Creatives', 'Framer']
-const field = 'rounded-lg border border-card-edge bg-canvas px-3 py-2 text-ink type-body'
+/* rounded-card (4px), NOT rounded-lg (16px). A 16px radius on a 40px-tall
+   input reads as a pill that failed to commit; the system's imagery is nearly
+   square and the inputs should agree with it. Fully-round stays for actual
+   pills — the buttons below. */
+const field =
+  'rounded-card border border-card-edge bg-canvas px-3 py-2.5 text-ink type-body ' +
+  'transition-colors focus:border-border-strong focus:outline-none'
+const labelText = 'type-meta text-muted'
 const initial: SaveState = {}
 
 const ProjectForm = ({ values, state: publish }: { values: ProjectFormValues; state: PublishState }) => {
@@ -44,81 +51,16 @@ const ProjectForm = ({ values, state: publish }: { values: ProjectFormValues; st
     })
 
   return (
-    <form action={formAction} className="flex max-w-xl flex-col gap-3">
+    /* No max-width: the page gives this column a fixed track, so constraining
+       it again here would leave a ragged gutter inside its own panel. */
+    <form action={formAction} className="flex flex-col gap-5">
       <input type="hidden" name="id" value={values.id} />
 
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Title</span>
-        <input
-          name="title"
-          defaultValue={values.title}
-          className={field}
-          onBlur={(e) => {
-            // Only auto-fill the slug while creating — never rewrite a live one.
-            const form = e.currentTarget.form
-            if (!isNew || !form) return
-            const slugInput = form.elements.namedItem('slug') as HTMLInputElement | null
-            if (slugInput && !slugInput.value) slugInput.value = slugify(e.currentTarget.value)
-          }}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Slug</span>
-        <input name="slug" defaultValue={values.slug} className={field} />
-        {!isNew && (
-          <span className="type-meta text-muted-soft">
-            Changing this breaks every link you have already shared.
-          </span>
-        )}
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Description</span>
-        <textarea name="description" defaultValue={values.description} rows={3} className={field} />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Category</span>
-        <select name="category" defaultValue={values.category || CATEGORIES[0]} className={field}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </label>
-
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="type-meta text-muted">Year</span>
-          <input name="year" type="number" defaultValue={values.year} className={field} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="type-meta text-muted">Type</span>
-          <input name="type" defaultValue={values.type} className={field} />
-        </label>
-      </div>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Tags (comma separated)</span>
-        <input name="tags" defaultValue={values.tags} className={field} />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Tools (comma separated)</span>
-        <input name="tools" defaultValue={values.tools} className={field} />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="type-meta text-muted">Client</span>
-        <input name="client" defaultValue={values.client} className={field} />
-      </label>
-
-      <label className="flex items-center gap-2">
-        <input type="checkbox" name="featured" defaultChecked={values.featured} />
-        <span className="type-body text-ink">Featured (autoplays in the grid)</span>
-      </label>
-
-      <div className="flex items-center gap-3">
+      {/* At the TOP of the column, not the bottom. The form is taller than the
+          panel, so buttons under the last field could only be reached by
+          scrolling past everything — the actions you take most often were the
+          ones furthest away. */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-hairline pb-5">
         <button
           type="submit"
           disabled={pending}
@@ -160,6 +102,81 @@ const ProjectForm = ({ values, state: publish }: { values: ProjectFormValues; st
         {state.savedAt && !state.error && <span className="type-meta text-muted">Saved.</span>}
         {publishError && <span className="type-meta text-muted">{publishError}</span>}
       </div>
+
+      {/* Above the fields rather than below them: it is the one control that
+          changes how the project BEHAVES in the grid, not what it says, and
+          burying it under ten text inputs made it easy to miss. */}
+      <label className="flex items-center gap-2 pb-1">
+        <input type="checkbox" name="featured" defaultChecked={values.featured} />
+        <span className="type-body text-ink">Featured (autoplays in the grid)</span>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Title</span>
+        <input
+          name="title"
+          defaultValue={values.title}
+          className={field}
+          onBlur={(e) => {
+            // Only auto-fill the slug while creating — never rewrite a live one.
+            const form = e.currentTarget.form
+            if (!isNew || !form) return
+            const slugInput = form.elements.namedItem('slug') as HTMLInputElement | null
+            if (slugInput && !slugInput.value) slugInput.value = slugify(e.currentTarget.value)
+          }}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Slug</span>
+        <input name="slug" defaultValue={values.slug} className={field} />
+        {!isNew && (
+          <span className="type-meta text-muted-soft">
+            Changing this breaks every link you have already shared.
+          </span>
+        )}
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Description</span>
+        <textarea name="description" defaultValue={values.description} rows={3} className={field} />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Category</span>
+        <select name="category" defaultValue={values.category || CATEGORIES[0]} className={field}>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </label>
+
+      <div className="grid grid-cols-2 gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className={labelText}>Year</span>
+          <input name="year" type="number" defaultValue={values.year} className={field} />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className={labelText}>Type</span>
+          <input name="type" defaultValue={values.type} className={field} />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Tags (comma separated)</span>
+        <input name="tags" defaultValue={values.tags} className={field} />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Tools (comma separated)</span>
+        <input name="tools" defaultValue={values.tools} className={field} />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className={labelText}>Client</span>
+        <input name="client" defaultValue={values.client} className={field} />
+      </label>
+
     </form>
   )
 }

@@ -102,15 +102,25 @@ export async function slugExists(slug: string, exceptId?: string): Promise<boole
   return res.items.some((item) => (item as unknown as RawEntry).sys.id !== exceptId)
 }
 
-export type AdminShot = { id: string; url: string; width: number; height: number }
+export type AdminShot = {
+  id: string
+  /** Thumbnail, for the strip. */
+  url: string
+  /** The same image at canvas size, for the editor's preview pane. */
+  previewUrl: string
+  width: number
+  height: number
+}
 
 /** Pure: derives the strip's data from an entry the caller ALREADY has.
  *  getRawProject is an uncached preview round trip, and the edit page has one
  *  in hand, so re-fetching just to list the shots would double it per load.
  *
- *  `url` goes through imageUrl so the strip's thumbnails resolve at the
- *  lib/media.ts chokepoint rather than as full-resolution originals — the same
- *  reason coverUrlOf does it above. */
+ *  Both URLs go through imageUrl so they resolve at the lib/media.ts
+ *  chokepoint rather than as full-resolution originals — the same reason
+ *  coverUrlOf does it above. Two sizes, not one: the strip would waste
+ *  bandwidth on a canvas-sized image and the canvas would look soft on a
+ *  thumbnail-sized one. */
 export function shotsOf(entry: RawEntry): AdminShot[] {
   if (!Array.isArray(entry.fields.shots)) return []
 
@@ -129,8 +139,31 @@ export function shotsOf(entry: RawEntry): AdminShot[] {
     const height = shot?.fields?.height
     // Same rule as the public mapper: a shot without dimensions would collapse
     // the layout, so it is dropped rather than rendered.
-    return id && url && width && height ? [{ id, url: imageUrl(url, 160), width, height }] : []
+    return id && url && width && height
+      ? [{ id, url: imageUrl(url, 240), previewUrl: imageUrl(url, 1200), width, height }]
+      : []
   })
+}
+
+/** Whether any shot OTHER than `exceptShotId` points at this asset.
+ *
+ *  Asked before deleting a shot's image, never after: Contentful's read APIs
+ *  are eventually consistent, so a just-deleted shot can still come back in
+ *  this query and a count taken afterwards would read as "still in use".
+ *
+ *  In practice uploads create exactly one asset per shot, so this is a guard
+ *  rather than an expectation — but the failure it guards against is silent
+ *  (another project's image vanishing) and the query is one cheap round trip. */
+export async function assetInUseElsewhere(
+  assetId: string,
+  exceptShotId: string,
+): Promise<boolean> {
+  const res = await previewClient().getEntries({
+    content_type: 'shot',
+    'fields.image.sys.id': assetId,
+    limit: 5,
+  })
+  return res.items.some((item) => (item as unknown as RawEntry).sys.id !== exceptShotId)
 }
 
 export async function getProjectShots(id: string): Promise<AdminShot[]> {

@@ -5,14 +5,25 @@ import { redirect } from 'next/navigation'
 import {
   cmaEnv,
   createEntry,
+  deleteAsset,
+  deleteEntry,
+  LOCALE,
   publishEntry,
   toAssetLink,
   toEntryLink,
   updateEntry,
   VersionConflictError,
 } from '@/lib/cma'
-import { getRawProject, getSettingsEntry, slugExists } from '@/lib/preview'
+import {
+  assetInUseElsewhere,
+  coverShotId,
+  getRawProject,
+  getSettingsEntry,
+  slugExists,
+} from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
+import { publishState } from '@/lib/admin/publish-state'
+import { removeShot } from '@/lib/admin/shots'
 import { parsePlaylistId } from '@/lib/music/playlist'
 import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
 
@@ -261,6 +272,90 @@ export async function reorderShots(
 
   updateTag('projects')
   return {}
+}
+
+export type DeleteShotState = { error?: string; warning?: string }
+
+/** Removes a shot from a project and destroys it — the entry and, unless
+ *  something else claims it, the image behind it.
+ *
+ *  UNLINK FIRST, THEN DELETE, and never the other way round. If the destroy
+ *  half fails you are left with an orphaned entry, which costs nothing and can
+ *  be cleaned up later. The reverse order leaves a live project pointing at a
+ *  record that no longer exists, and there is no undo for that.
+ *
+ *  This is the one studio action that reaches the public site without going
+ *  through Publish. The confirmation step in the UI says so; see the comment
+ *  on the republish below for why it cannot be deferred. */
+export async function deleteShot(projectId: string, shotId: string): Promise<DeleteShotState> {
+  const project = await getRawProject(projectId)
+  if (!project) return { error: 'That project no longer exists.' }
+
+  // From the raw links, NOT from shotsOf(): that mapper drops shots missing
+  // width/height the way the public one does, so building the new array out of
+  // it would silently unlink every malformed shot as a side effect of deleting
+  // one good one.
+  const existing = linkIds(project.fields.shots).map((id) => ({ id }))
+  const { shots, coverId, coverChanged, removed } = removeShot(
+    existing,
+    coverShotId(project),
+    shotId,
+  )
+  if (!removed) return { error: 'That shot is no longer part of this project. Reload.' }
+
+  // Read the asset link before the entry is gone — afterwards there is nothing
+  // left to ask. Straight from the CMA rather than the CDA-resolved copy, so a
+  // link the preview client failed to resolve cannot orphan an asset silently.
+  const { client, spaceId, environmentId } = cmaEnv()
+  const shotEntry = await client.entry.get({ spaceId, environmentId, entryId: shotId })
+  const assetId = (shotEntry.fields?.image?.[LOCALE] as Link | undefined)?.sys?.id
+
+  const changed: Record<string, unknown> = { shots: shots.map((s) => toEntryLink(s.id)) }
+  // Only when it actually changed. Writing it unconditionally would republish
+  // an identical cover on every delete; omitting it when it did change would
+  // leave the project linking to an entry about to be destroyed.
+  if (coverChanged) changed.coverShot = coverId ? toEntryLink(coverId) : null
+
+  try {
+    await updateEntry(projectId, changed, project.sys.updatedAt)
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      return { error: 'This project changed elsewhere. Reload before deleting.' }
+    }
+    throw error
+  }
+
+  // A published project keeps serving its published version, which still links
+  // to the shot about to be deleted. For an ordinary shot that is harmless:
+  // lib/contentful.ts reads `.withoutUnresolvableLinks`, so the dead link drops
+  // out on its own and the image simply leaves the site.
+  //
+  // The COVER is not harmless. toProject() discards any project whose cover
+  // will not resolve, so a published project pointing at a deleted cover
+  // vanishes from the feed entirely. The promoted cover therefore has to reach
+  // the published version, and publish is per-ENTRY — so any saved-but-
+  // unpublished edits to this project's own fields go live along with it.
+  // That is a real side effect and the delete confirmation warns about it.
+  if (coverChanged && publishState(project.sys) !== 'draft') {
+    await publishEntry(projectId)
+  }
+
+  // Past this point the shot has already left the project, so a failure is a
+  // WARNING and not an error: it is gone from the site either way, and a
+  // caller that retried would re-run an unlink that already succeeded.
+  let warning: string | undefined
+  try {
+    await deleteEntry(shotId)
+    if (assetId && !(await assetInUseElsewhere(assetId, shotId))) {
+      await deleteAsset(assetId)
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    warning = `The shot was removed from this project, but cleaning it out of Contentful failed: ${detail}`
+  }
+
+  updateTag('projects')
+  return warning ? { warning } : {}
 }
 
 /** `coverShot` is its own reference field, so choosing a cover never reorders

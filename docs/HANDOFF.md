@@ -146,6 +146,57 @@ below.
   not reliably auto-scroll a nested scroll container, so cards could only be
   moved among rows already on screen. Used by the order board and the shots
   strip.
+- **The project editor is two columns** (`/admin/projects/[id]`): the work on
+  the left as a `ShotCanvas` — one shot large, one row of thumbnails under it —
+  and the controls on the right, drop zone on top. `ShotCanvas` owns the shot
+  state and all three shot actions; `shots-strip.tsx` is presentational and
+  handles drag only. A click on a thumbnail now *previews* it, so setting the
+  cover moved to its own hover control.
+
+  The **hero** carries a fixed height (`--studio-hero-h`), sized so it, the
+  hint line and the first row of thumbnails all clear the fold; the strip below
+  wraps to as many rows as it needs and the panel scrolls. A height at every
+  width, never an aspect ratio — an aspect-ratio hero is as tall as the column
+  is wide, so a narrow window *or merely browser zoom* pushed it off screen.
+  Note `--studio-hero-h` counts the dark toolbar and `--studio-chrome-h` does
+  not: they are measured against different boxes. The token's comment carries
+  the arithmetic, so changing any of that chrome means changing it.
+
+  Hero arrows step through the shots and prefetch the two neighbours — each
+  `?w=1200` variant is rendered by Contentful on first request, so without the
+  prefetch every step visibly waited on that render.
+
+  The Save/Publish/Unpublish row sits at the **top** of the right column, not
+  under the last field: the form is taller than the panel, so the actions taken
+  most often were the ones furthest away.
+- **Buttons get `cursor: pointer` from a base rule in `globals.css`.**
+  Tailwind v4's preflight does not set one (verified in its `preflight.css`),
+  and the browser default for `<button>` is an arrow — so every button in the
+  app read as inert. Fixed once globally rather than per component.
+- **Deleting a shot** (`deleteShot`) unlinks it, then destroys the shot entry
+  and its image asset. Confirmation happens under the hero at full size, not on
+  the 112px thumbnail. Three things about it are load-bearing:
+
+  **Unlink first, destroy second.** A failure after the unlink leaves an
+  orphan, which is recoverable; the reverse leaves a live project pointing at a
+  deleted entry, which is not. Anything failing after the unlink is reported as
+  a *warning*, never an error — the shot is gone from the site either way, and
+  retrying would re-run an unlink that already succeeded.
+
+  **The cover forces a republish, and nothing else does.** This is the one
+  studio action that reaches the public site without going through Publish.
+  Deleting an ordinary shot from a live project needs no republish: the
+  published version keeps a dead link and `.withoutUnresolvableLinks` drops it.
+  The cover is different — `toProject()` discards any project whose cover will
+  not resolve, so a published project pointing at a deleted cover **vanishes
+  from the feed entirely**. So the promoted cover is published, and since
+  publish is per-entry, unpublished draft edits to that project go live with
+  it. The confirm copy says so when it applies. Do not "simplify" this into
+  always- or never-republishing; both are wrong in one direction.
+
+  Cover promotion lives in `lib/admin/shots.ts` (`removeShot`, unit-tested) and
+  the client uses the same function for its optimistic update, so the screen
+  and Contentful cannot disagree about which shot takes over.
 - **Shop tab is a deliberate stub.** The tab exists so the studio's navigation
   doesn't grow a hole later, but `shopItem` entries are still edited in
   Contentful directly. Wiring it up needs the same form, upload and publish

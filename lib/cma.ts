@@ -119,3 +119,34 @@ export async function unpublishEntry(entryId: string) {
   const { client, spaceId, environmentId } = cmaEnv()
   return client.entry.unpublish({ spaceId, environmentId, entryId })
 }
+
+/** Destroys an entry, unpublishing first only when it is actually live.
+ *
+ *  Both halves of that are required. The CMA refuses to delete a published
+ *  record, AND refuses to unpublish one that was never published — so the
+ *  state has to be read rather than assumed, and an unconditional unpublish
+ *  would fail on exactly the drafts it was meant to make deletable.
+ *
+ *  Deletion is permanent: Contentful keeps no recycle bin. Every caller must
+ *  have detached the record from whatever pointed at it FIRST, so that a
+ *  failure here leaves an orphan (recoverable) rather than a dangling link
+ *  (not). */
+export async function deleteEntry(entryId: string) {
+  const { client, spaceId, environmentId } = cmaEnv()
+  const current = await client.entry.get({ spaceId, environmentId, entryId })
+  if (current.sys.publishedVersion) {
+    await client.entry.unpublish({ spaceId, environmentId, entryId })
+  }
+  return client.entry.delete({ spaceId, environmentId, entryId })
+}
+
+/** The same walk for an asset. Separate because the CMA namespaces them
+ *  separately — there is no polymorphic delete. */
+export async function deleteAsset(assetId: string) {
+  const { client, spaceId, environmentId } = cmaEnv()
+  const current = await client.asset.get({ spaceId, environmentId, assetId })
+  if (current.sys.publishedVersion) {
+    await client.asset.unpublish({ spaceId, environmentId, assetId })
+  }
+  return client.asset.delete({ spaceId, environmentId, assetId })
+}

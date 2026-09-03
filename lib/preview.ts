@@ -6,9 +6,16 @@
 import 'server-only'
 import { createClient } from 'contentful'
 import { publishState, type PublishState } from './admin/publish-state'
+import { imageUrl } from './media'
 
 export type RawEntry = {
-  sys: { id: string; version: number; publishedVersion?: number; updatedAt: string }
+  sys: {
+    id: string
+    revision: number
+    updatedAt: string
+    publishedAt?: string
+    publishedVersion?: number
+  }
   fields: Record<string, unknown>
 }
 
@@ -38,7 +45,8 @@ function previewClient() {
 
 function coverUrlOf(fields: Record<string, unknown>): string | undefined {
   const cover = fields.coverShot as { fields?: { image?: { fields?: { file?: { url?: string } } } } } | undefined
-  return cover?.fields?.image?.fields?.file?.url
+  const rawUrl = cover?.fields?.image?.fields?.file?.url
+  return rawUrl ? imageUrl(rawUrl, 400) : undefined
 }
 
 export async function listProjects(): Promise<AdminProject[]> {

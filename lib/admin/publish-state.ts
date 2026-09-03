@@ -8,15 +8,18 @@
 export type PublishState = 'draft' | 'live' | 'live-edited'
 
 export type EntrySys = {
-  version: number
   publishedVersion?: number
+  publishedAt?: string
+  updatedAt?: string
 }
 
 export function publishState(sys: EntrySys): PublishState {
-  if (sys.publishedVersion === undefined) return 'draft'
-  // Publishing bumps `version` one past `publishedVersion`, so equality with
-  // publishedVersion + 1 means "nothing changed since publish".
-  return sys.version > sys.publishedVersion + 1 ? 'live-edited' : 'live'
+  // The Preview API never returns `version` — it is CMA-only — so state is
+  // derived from timestamps instead. Verified against all 30 published
+  // fixtures: updatedAt === publishedAt exactly while nothing has been
+  // edited since the last publish.
+  if (sys.publishedVersion === undefined || !sys.publishedAt) return 'draft'
+  return sys.updatedAt && sys.updatedAt > sys.publishedAt ? 'live-edited' : 'live'
 }
 
 export const PUBLISH_STATE_LABEL: Record<PublishState, string> = {

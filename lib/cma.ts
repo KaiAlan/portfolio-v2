@@ -25,8 +25,16 @@ export function cmaEnv(): CmaEnv {
 }
 
 /** Contentful stores every field per-locale. The site is single-locale, so
- *  wrap in exactly one place. (Reads go through lib/preview.ts, which uses the
- *  CDA and hands back already-flattened fields, so there is no unwrap here.) */
+ *  wrap in exactly one place.
+ *
+ *  The value convention matters, because updateEntry MERGES:
+ *   - `undefined` means "leave this field alone" — the key is omitted and the
+ *     stored value survives the merge.
+ *   - `null` means "clear this field" — it is sent through as an explicit null.
+ *
+ *  A caller rendering an optional input MUST emit `null`, not `undefined`, when
+ *  the user empties it, or the old value silently persists behind a save that
+ *  reports success. */
 export const LOCALE = 'en-US'
 
 export function localize(fields: Record<string, unknown>): Record<string, unknown> {
@@ -67,17 +75,20 @@ export async function createEntry(contentType: string, fields: Record<string, un
  *  deferred `videoMp4Url` / `videoWebmUrl` — are preserved structurally rather
  *  than by every caller remembering to re-send them.
  *
- *  Pass `expectedVersion` (the version the edit was based on) for optimistic
- *  locking: a mismatch means someone else wrote in the meantime. */
+ *  Pass `expectedUpdatedAt` (the `sys.updatedAt` the edit was based on) for
+ *  optimistic locking: a mismatch means someone else wrote in the meantime. */
 export async function updateEntry(
   entryId: string,
   changed: Record<string, unknown>,
-  expectedVersion?: number,
+  expectedUpdatedAt?: string,
 ) {
   const { client, spaceId, environmentId } = cmaEnv()
   const current = await client.entry.get({ spaceId, environmentId, entryId })
 
-  if (expectedVersion !== undefined && current.sys.version !== expectedVersion) {
+  // Optimistic lock on `updatedAt`, NOT on `version`: callers read through the
+  // Preview API, which never returns `version`, so a version check would
+  // compare against undefined and silently never fire.
+  if (expectedUpdatedAt !== undefined && current.sys.updatedAt !== expectedUpdatedAt) {
     throw new VersionConflictError()
   }
 
@@ -85,13 +96,18 @@ export async function updateEntry(
   return client.entry.update({ spaceId, environmentId, entryId }, current)
 }
 
-/** CDA-resolved entities carry `sys.id`, so this narrows a resolved entry (or
- *  an id) back to the link shape the CMA requires. */
-export function toEntryLink(value: string | { sys?: { id?: string } }) {
+type LinkType = 'Entry' | 'Asset'
+
+function toLink(linkType: LinkType, value: string | { sys?: { id?: string } }) {
   const id = typeof value === 'string' ? value : value?.sys?.id
-  if (!id) throw new Error('Cannot build an entry link without an id.')
-  return { sys: { type: 'Link', linkType: 'Entry', id } }
+  if (!id) throw new Error(`Cannot build a ${linkType} link without an id.`)
+  return { sys: { type: 'Link' as const, linkType, id } }
 }
+
+/** CDA-resolved entities carry `sys.id`, so these narrow a resolved entity (or
+ *  a bare id) back to the link shape the CMA requires. */
+export const toEntryLink = (value: string | { sys?: { id?: string } }) => toLink('Entry', value)
+export const toAssetLink = (value: string | { sys?: { id?: string } }) => toLink('Asset', value)
 
 export async function publishEntry(entryId: string) {
   const { client, spaceId, environmentId } = cmaEnv()

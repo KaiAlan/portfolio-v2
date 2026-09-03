@@ -95,3 +95,43 @@ export async function slugExists(slug: string, exceptId?: string): Promise<boole
   })
   return res.items.some((item) => (item as unknown as RawEntry).sys.id !== exceptId)
 }
+
+export type AdminShot = { id: string; url: string; width: number; height: number }
+
+/** Pure: derives the strip's data from an entry the caller ALREADY has.
+ *  getRawProject is an uncached preview round trip, and the edit page has one
+ *  in hand, so re-fetching just to list the shots would double it per load.
+ *
+ *  `url` goes through imageUrl so the strip's thumbnails resolve at the
+ *  lib/media.ts chokepoint rather than as full-resolution originals — the same
+ *  reason coverUrlOf does it above. */
+export function shotsOf(entry: RawEntry): AdminShot[] {
+  if (!Array.isArray(entry.fields.shots)) return []
+
+  return (entry.fields.shots as unknown[]).flatMap((raw) => {
+    const shot = raw as {
+      sys?: { id?: string }
+      fields?: {
+        width?: number
+        height?: number
+        image?: { fields?: { file?: { url?: string } } }
+      }
+    }
+    const id = shot?.sys?.id
+    const url = shot?.fields?.image?.fields?.file?.url
+    const width = shot?.fields?.width
+    const height = shot?.fields?.height
+    // Same rule as the public mapper: a shot without dimensions would collapse
+    // the layout, so it is dropped rather than rendered.
+    return id && url && width && height ? [{ id, url: imageUrl(url, 160), width, height }] : []
+  })
+}
+
+export async function getProjectShots(id: string): Promise<AdminShot[]> {
+  const entry = await getRawProject(id)
+  return entry ? shotsOf(entry) : []
+}
+
+export function coverShotId(entry: RawEntry): string | undefined {
+  return (entry.fields.coverShot as { sys?: { id?: string } } | undefined)?.sys?.id
+}

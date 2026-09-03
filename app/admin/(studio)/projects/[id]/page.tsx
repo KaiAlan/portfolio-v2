@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import ProjectForm, { type ProjectFormValues } from '@/components/admin/project-form'
 import DropZone from '@/components/admin/drop-zone'
-import { getRawProject } from '@/lib/preview'
+import ShotsStrip from '@/components/admin/shots-strip'
+import { coverShotId, getRawProject, shotsOf } from '@/lib/preview'
 import { publishState } from '@/lib/admin/publish-state'
 
 /** Uncached preview read by design — see the note in the (studio) layout. */
@@ -30,6 +31,8 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
   const entry = await getRawProject(id)
   if (!entry) notFound()
 
+  const shots = shotsOf(entry)
+
   const values: ProjectFormValues = {
     id,
     title: str(entry.fields.title),
@@ -50,6 +53,14 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
       <ProjectForm values={values} state={publishState(entry.sys)} />
       {/* Only for a saved project: shots need something to attach to. */}
       <DropZone projectId={id} />
+      {/* Keyed on the shot ids so a drop-zone attach remounts it with the new
+          list instead of leaving the strip's local state behind. */}
+      <ShotsStrip
+        key={shots.map((s) => s.id).join(',')}
+        projectId={id}
+        shots={shots}
+        coverId={coverShotId(entry)}
+      />
     </div>
   )
 }

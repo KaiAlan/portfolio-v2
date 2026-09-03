@@ -247,3 +247,29 @@ export async function addShots(
   updateTag('projects')
   return {}
 }
+
+export async function reorderShots(
+  projectId: string,
+  shotIds: string[],
+): Promise<{ error?: string }> {
+  const project = await getRawProject(projectId)
+  if (!project) return { error: 'That project no longer exists.' }
+
+  const shots = shotIds.map(toEntryLink)
+  await updateEntry(projectId, { shots }, project.sys.updatedAt)
+
+  updateTag('projects')
+  return {}
+}
+
+/** `coverShot` is its own reference field, so choosing a cover never reorders
+ *  `shots` — the two are independent writes. */
+export async function setCover(projectId: string, shotId: string): Promise<{ error?: string }> {
+  const project = await getRawProject(projectId)
+  if (!project) return { error: 'That project no longer exists.' }
+
+  await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.updatedAt)
+
+  updateTag('projects')
+  return {}
+}

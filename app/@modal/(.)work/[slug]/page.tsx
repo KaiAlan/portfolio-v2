@@ -10,14 +10,17 @@ type ModalProps = {
 }
 
 /**
- * Every field this panel shows — title, shots, metadata — comes from the
- * project keyed by `slug`, so there is no meaningful static shell to carry a
- * navigation into this segment: the alternative to blocking is a fallback
- * panel with nothing real in it, which is worse. `app/@modal/layout.tsx`
- * still holds a `<Suspense>` boundary above this page so the shell doesn't
- * remount and blink on every prev/next; this just stops Cache Components
- * from flagging that as a problem to fix. Same call already made for every
- * `/admin` page — see the note in its `(studio)` layout.
+ * `params`/`searchParams` are runtime data, and every field this panel shows
+ * — title, shots, metadata — comes from the project keyed by `slug`. There is
+ * no meaningful static shell to carry a navigation into this segment: the
+ * alternative to blocking is a fallback panel with nothing real in it, which
+ * is worse. `app/@modal/layout.tsx` holds a `<Suspense>` boundary above this
+ * page so the shell doesn't remount and blink on every prev/next — that
+ * boundary can't live here, because this file is keyed by [slug] and remounts
+ * on every prev/next itself. `instant = false` stops Cache Components from
+ * flagging the resulting blocking navigation as a problem to fix; the same
+ * call already made for every `/admin` page — see the note in its `(studio)`
+ * layout.
  */
 export const instant = false
 
@@ -28,14 +31,6 @@ export const instant = false
  * prev/next are scoped to the filter the grid was showing, which arrives
  * as ?c= on the card's href. Browsing inside the lightbox therefore walks
  * the same set the user was actually looking at, not the whole catalogue.
- */
-/**
- * `searchParams` and `params` are runtime data. Reading them made this route
- * non-prerenderable and every open a blocking server round trip — ~1s on a
- * warm dev server — so the access needs a Suspense boundary above it. That
- * boundary lives in `app/@modal/layout.tsx`, NOT here: a boundary inside this
- * file would be keyed by [slug] and remount on every prev/next, blinking the
- * whole lightbox out and back.
  */
 const WorkModal = async ({ params, searchParams }: ModalProps) => {
   const [{ slug }, { c }] = await Promise.all([params, searchParams])

@@ -6,7 +6,7 @@ current state and what to do next.
 
 **Last updated:** 2026-08-23
 **Repo:** https://github.com/KaiAlan/portfolio-v2 (public, MIT)
-**Local:** `C:\home\claude-projects\portfolio`
+**Local:** `/home/kaialan/portfolio-v2` (WSL2; moved off `C:\home\claude-projects\portfolio` on 2026-09-03)
 
 ---
 
@@ -59,12 +59,22 @@ meant editing code.
 ## Not done
 
 **Blocked on account setup (Kai's, not code):**
-1. **Cloudflare R2** — account, R2 enabled (card on file, $0), bucket,
-   usage alert. Then `R2_*` vars in `.env.local`.
-2. **Domain** — `kaialan.com` at Porkbun → nameservers to Cloudflare.
-   Apex + `www` → Vercel as **DNS-only / grey cloud** (proxying Cloudflare
-   in front of Vercel double-CDNs). `cdn.kaialan.com` → R2 custom domain.
-3. **Vercel** — link the repo, set env vars.
+1. **Cloudflare R2** — **BLOCKED: no card on file.** R2 requires one even
+   though the free tier bills $0. Until then there is no `cdn.kaialan.com`
+   and no video pipeline. Then bucket `kaialan-media`, usage alert, CORS
+   (`PUT` from the dev origin), and `R2_*` vars in `.env.local`.
+2. **Domain** — **DONE 2026-08-26.** `kaialan.com` nameservers moved
+   Porkbun → Cloudflare (`noor`/`pete.ns.cloudflare.com`). Verified after
+   cutover: apex `A 216.198.79.1` and `www CNAME
+   3cc1f46ef4b0e5b6.vercel-dns-017.com` both **unproxied / grey cloud**;
+   MX pair (`fwd1`/`fwd2.porkbun.com`) intact so Porkbun mail forwarding
+   still works; SPF + Google + Pinterest TXT intact; 6 `_acme-challenge`
+   TXT intact. v1 still serves — apex 307 → `www` 200, TLS clean.
+   `cdn.kaialan.com` does **not** exist yet (waits on R2).
+   Note: the grey-cloud rule applies only to the Vercel records. An R2
+   custom domain **must** be proxied — that is how the bucket is served.
+3. **Vercel** — link the repo, set env vars. v1 is currently live on this
+   domain; v2 does not take it over until we repoint deliberately.
 
 **Code remaining:**
 - P1.8 — nav polish: profile-pic hover → about overlay (copy, links, quote).
@@ -120,6 +130,59 @@ so ordering only becomes real when the studio ships at P3.
 
 **Shots missing `width`/`height` are dropped** in the mapper rather than
 rendered, because they would collapse the masonry.
+
+---
+
+## WSL2 build networking
+
+The project moved from `C:\home\claude-projects\portfolio` to
+`/home/kaialan/portfolio-v2` on 2026-09-03. It builds here, but **`next build`
+is intermittently flaky** and the failure looks like a code bug when it isn't.
+
+`next build` prerenders 39 pages with 10 parallel workers, each hitting the
+Contentful CDA. WSL2's default NAT networking silently drops some concurrent
+outbound connections. Measured: 20 parallel HTTPS requests to
+`cdn.contentful.com` → 18 returned 200, **2 hung to a full 25 s timeout**, and
+latency rose from ~0.7 s to ~6 s. Sequential requests are consistently fine.
+
+The Contentful SDK retries, so most runs recover and print
+`[warning] Connection error occurred. Waiting for ~2000 ms before retrying...`
+before finishing. When the retries do not win, the build dies with a **misleading**
+error:
+
+```
+Error: Filling a cache during prerender timed out, likely because request-specific
+arguments such as params, searchParams, cookies() or dynamic data were used inside
+"use cache".
+    at lib/contentful.ts:203  (getProject)
+```
+
+Nothing is wrong with `getProject`. It is a network timeout wearing a
+Cache-Components costume. **Do not "fix" `lib/contentful.ts` in response to it.**
+
+Three observed runs on this machine: 1 failed at 19/39, 2 passed (one needed 3
+retries). Re-running the build is usually enough.
+
+**The real fix** is Windows-side — mirrored networking, which replaces the NAT
+layer. Create `C:\Users\SATYAJIT\.wslconfig` with:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+dnsTunneling=true
+autoProxy=true
+```
+
+then `wsl --shutdown` from PowerShell and reopen the shell. There is no
+`.wslconfig` on this machine yet, so the default NAT mode is in effect.
+
+**If you need one reliable build without touching Windows**, raise the retry
+budget temporarily — do not commit it, since it is a local-network workaround
+and Vercel's builders do not have this problem:
+
+```ts
+experimental: { staticGenerationRetryCount: 3 }
+```
 
 ---
 

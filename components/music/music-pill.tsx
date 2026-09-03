@@ -32,6 +32,9 @@ const MusicPill = () => {
 
   const { status, track, color } = music
   const playing = status === 'playing'
+  // The YouTube player object exists before its methods do. Until a state
+  // lands, the transport would be a control that looks live and isn't.
+  const ready = status !== 'loading'
 
   // Neutral until a colour resolves, so the pill never flashes an intermediate
   // shade. The transition carries it across when one arrives.
@@ -92,17 +95,17 @@ const MusicPill = () => {
       </span>
 
       <span className={`flex items-center gap-2.5 pl-2 ${titleClass}`}>
-        <Control onClick={music.prev} label="Previous track">
+        <Control onClick={music.prev} label="Previous track" disabled={!ready}>
           <SkipBack className="size-4" strokeWidth={2} />
         </Control>
-        <Control onClick={music.toggle} label={playing ? 'Pause' : 'Play'}>
+        <Control onClick={music.toggle} label={playing ? 'Pause' : 'Play'} disabled={!ready}>
           {playing ? (
             <Pause className="size-4" strokeWidth={2} />
           ) : (
             <Play className="size-4" strokeWidth={2} />
           )}
         </Control>
-        <Control onClick={music.next} label="Next track">
+        <Control onClick={music.next} label="Next track" disabled={!ready}>
           <SkipForward className="size-4" strokeWidth={2} />
         </Control>
       </span>
@@ -113,17 +116,20 @@ const MusicPill = () => {
 const Control = ({
   onClick,
   label,
+  disabled = false,
   children,
 }: {
   onClick: () => void
   label: string
+  disabled?: boolean
   children: React.ReactNode
 }) => (
   <button
     type="button"
     onClick={onClick}
     aria-label={label}
-    className="transition-opacity hover:opacity-60"
+    disabled={disabled}
+    className="transition-opacity hover:opacity-60 disabled:pointer-events-none disabled:opacity-40"
   >
     {children}
   </button>

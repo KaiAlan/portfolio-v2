@@ -1,6 +1,4 @@
 import Navbar from '@/components/navbar/navbar'
-import MusicProvider from '@/components/music/music-provider'
-import { getSiteSettings } from '@/lib/contentful'
 
 /**
  * The public shell: the sticky header, and the slot the lightbox renders into.
@@ -14,21 +12,17 @@ import { getSiteSettings } from '@/lib/contentful'
  * slot, so it has to sit beside the routes it intercepts rather than at the
  * document root.
  *
- * `MusicProvider` belongs here rather than in the root layout for the same
- * reason the header does: the studio has no music player, and mounting one in
- * the document root would put a hidden YouTube iframe inside /admin too. Here
- * it wraps every public route and is never remounted while browsing between
- * them, so playback survives navigation — and correctly stops on the way into
- * the studio.
+ * The music player is NOT here. It briefly was, back when the studio had no
+ * player of its own; now that both want one, the provider lives in the root
+ * layout — the only place neither subtree remounts, so playback carries across
+ * the boundary instead of restarting at it.
  */
-export default async function SiteLayout({ children, modal }: LayoutProps<'/'>) {
-  const { youtubePlaylistId } = await getSiteSettings()
-
+export default function SiteLayout({ children, modal }: LayoutProps<'/'>) {
   return (
-    <MusicProvider playlistId={youtubePlaylistId}>
+    <>
       <Navbar />
       {children}
       {modal}
-    </MusicProvider>
+    </>
   )
 }

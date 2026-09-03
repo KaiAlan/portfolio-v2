@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import MusicProvider from '@/components/music/music-provider'
+import { getSiteSettings } from '@/lib/contentful'
 import './globals.css'
 
 /**
@@ -31,18 +33,40 @@ export const metadata: Metadata = {
 }
 
 /**
- * Document shell only — html, body, font, metadata.
+ * Document shell — html, body, font, metadata, and the music player.
  *
  * The header deliberately does NOT live here. It used to, which meant the
  * studio rendered it *and* its own copy inside the panel, so /admin showed two
  * navs. The public shell moved to `(site)/layout.tsx`; a route group changes
  * no URLs, so this is purely about which subtree owns the chrome. The studio
  * now renders the one nav it wants, where its design puts it.
+ *
+ * `MusicProvider` is the exception, and it sits here precisely *because* it is
+ * above that split. The player belongs to both the site and the studio, and
+ * this is the only layout neither subtree remounts, so one provider serves
+ * both instead of two that each own a player and fight over it. It began
+ * under `(site)`, back when the studio had no player at all.
+ *
+ * To be precise about what that does and does not buy: playback survives
+ * every *client* navigation — through the feed, into a project, between
+ * studio tabs. It does not survive going from the site to `/admin`, because
+ * nothing links the two, so that is always a fresh document load and the
+ * whole page is torn down. Hoisting cannot fix that and is not meant to.
+ *
+ * The pill itself renders wherever `Navbar` does, so `/admin/login` — which
+ * has no navbar — quietly gets the provider and no visible player, which is
+ * correct: nothing to control before you are through the gate.
  */
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // Cached read (`use cache` + cacheTag in lib/contentful.ts), so putting it
+  // in the document shell does not make every route dynamic.
+  const { youtubePlaylistId } = await getSiteSettings()
+
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col bg-canvas">{children}</body>
+      <body className="flex min-h-full flex-col bg-canvas">
+        <MusicProvider playlistId={youtubePlaylistId}>{children}</MusicProvider>
+      </body>
     </html>
   )
 }

@@ -182,7 +182,7 @@ const MusicProvider = ({
         events: {
           onReady: (event: YTEvent) => {
             if (cancelled) return
-            event.target.setLoop(true)
+            if (typeof event.target.setLoop === 'function') event.target.setLoop(true)
             syncTrack(event.target)
             setStatus('ready')
           },
@@ -242,14 +242,26 @@ const MusicProvider = ({
       status,
       track,
       color,
+      // Every call is guarded on the method existing, not just the player.
+      // `new YT.Player()` returns an object immediately but attaches its
+      // methods only once the iframe is ready, so a click landing in that gap
+      // threw "playVideo is not a function" and killed the transport. The pill
+      // also disables itself while loading; this is the belt to that braces,
+      // because readiness is YouTube's to decide and it can regress.
       toggle: () => {
         const player = playerRef.current
-        if (!player) return
+        if (typeof player?.playVideo !== 'function') return
         if (status === 'playing') player.pauseVideo()
         else player.playVideo()
       },
-      next: () => playerRef.current?.nextVideo(),
-      prev: () => playerRef.current?.previousVideo(),
+      next: () => {
+        const player = playerRef.current
+        if (typeof player?.nextVideo === 'function') player.nextVideo()
+      },
+      prev: () => {
+        const player = playerRef.current
+        if (typeof player?.previousVideo === 'function') player.previousVideo()
+      },
     }),
     [status, track, color],
   )

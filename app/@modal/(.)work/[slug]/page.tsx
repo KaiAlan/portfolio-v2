@@ -10,6 +10,18 @@ type ModalProps = {
 }
 
 /**
+ * Every field this panel shows — title, shots, metadata — comes from the
+ * project keyed by `slug`, so there is no meaningful static shell to carry a
+ * navigation into this segment: the alternative to blocking is a fallback
+ * panel with nothing real in it, which is worse. `app/@modal/layout.tsx`
+ * still holds a `<Suspense>` boundary above this page so the shell doesn't
+ * remount and blink on every prev/next; this just stops Cache Components
+ * from flagging that as a problem to fix. Same call already made for every
+ * `/admin` page — see the note in its `(studio)` layout.
+ */
+export const instant = false
+
+/**
  * The intercepted /work/[slug] — same ProjectDetail as the full page,
  * wrapped in the lightbox shell.
  *

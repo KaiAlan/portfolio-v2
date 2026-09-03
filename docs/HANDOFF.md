@@ -154,15 +154,24 @@ projects list, and the order panel all work. No console errors on any of
 those. Two things surfaced, neither a regression from P3 work — both
 predate it:
 
-- **`app/@modal/(.)work/[slug]/page.tsx` (`WorkModal`) trips a Cache
-  Components warning**: `params`/`searchParams` are read outside
-  `<Suspense>` with no `export const instant = false`, so Next logs "Route
-  ... encountered runtime data during prerendering or a navigation" on
-  every open. The navigation still completes and the modal renders
-  correctly — this affects the "instant" classification, not correctness —
-  but it's the same category of issue `components/navbar/navbar.tsx` and
-  every `/admin` page already deliberately handle (see their comments).
-  Worth the same fix here.
+- **`app/@modal/(.)work/[slug]/page.tsx` (`WorkModal`) tripped a Cache
+  Components warning** — **fixed 2026-09-03**. `params`/`searchParams` were
+  read with no Suspense boundary and no `instant` declaration, so every open
+  logged "Route ... encountered runtime data during prerendering or a
+  navigation." Two changes: `app/@modal/layout.tsx` now wraps the slot in
+  `<Suspense fallback={null}>` — it has to live in the *layout*, not the
+  page, because the page is keyed by `[slug]` and a boundary there would
+  remount (and blink) on every prev/next. That alone didn't silence the
+  warning — Next's own guide (`node_modules/next/dist/docs/.../instant-
+  navigation.md`) confirms validation checks the segment itself, not credit
+  from an ancestor layout's boundary. So `WorkModal` also carries
+  `export const instant = false`: every field this panel shows depends on
+  the slug, there's no meaningful static shell, and the project deliberately
+  doesn't want a flashing skeleton fallback — exactly the case the docs'
+  "Opting out" section describes, and the same call already made for every
+  `/admin` page. Verified clean (headless Chromium, zero console errors,
+  arrow-key prev/next still works) after a full `rm -rf .next && npm run
+  build`.
 - **Fixture videos fail to load under ORB** (`net::ERR_BLOCKED_BY_ORB`) —
   both sample URLs (`test-videos.co.uk`, `commondatastorage.googleapis.com`)
   are cross-origin with no CORS headers Chromium will accept for a

@@ -842,7 +842,7 @@ git commit -m "feat: password gate for the studio behind proxy.ts"
 - Consumes: `publishState`, `EntrySys` (Task 1)
 - Produces:
   - `lib/preview.ts`: `type AdminProject = { id: string; title: string; slug: string; category: string; state: PublishState; coverUrl?: string; updatedAt: string }`; `listProjects(): Promise<AdminProject[]>`; `getRawProject(id: string): Promise<RawEntry | null>`
-  - `lib/cma.ts`: `cmaEnv(): CmaEnv` returning `{ client, spaceId, environmentId }`; `createEntry(contentType, fields)`; `updateEntry(entryId, fields, expectedVersion?)` (throws `VersionConflictError`); `publishEntry(entryId)`; `unpublishEntry(entryId)`; `localize(fields)`; `LOCALE`
+  - `lib/cma.ts`: `cmaEnv(): CmaEnv` returning `{ client, spaceId, environmentId }`; `createEntry(contentType, fields)`; `updateEntry(entryId, changed, expectedVersion?)` — **merges** `changed` into the entry's CMA fields, throws `VersionConflictError`; `publishEntry(entryId)`; `unpublishEntry(entryId)`; `toEntryLink(idOrResolvedEntity)`; `localize(fields)`; `LOCALE`
 
 - [ ] **Step 1: Create `lib/preview.ts`**
 
@@ -986,11 +986,22 @@ export async function createEntry(contentType: string, fields: Record<string, un
 /** Re-reads the entry so the CMA gets back exactly the shape it handed out —
  *  the plain client's `update` wants the whole entry, not a synthesised `sys`.
  *
- *  Pass `expectedVersion` (the version the edit was based on) to get optimistic
+ *  MERGES `changed` into the entry's existing fields. Callers pass ONLY what
+ *  they are changing.
+ *
+ *  This is load-bearing, not a convenience. Reads come from lib/preview.ts via
+ *  the CDA with `include: 2`, which resolves `shots` and `coverShot` into FULL
+ *  ENTRY OBJECTS. Spreading those back into a CMA update would replace every
+ *  link with an inlined entity and corrupt the references on the first save,
+ *  silently. Merging server-side means untouched fields — including the
+ *  deferred `videoMp4Url` / `videoWebmUrl` — are preserved structurally rather
+ *  than by every caller remembering to re-send them.
+ *
+ *  Pass `expectedVersion` (the version the edit was based on) for optimistic
  *  locking: a mismatch means someone else wrote in the meantime. */
 export async function updateEntry(
   entryId: string,
-  fields: Record<string, unknown>,
+  changed: Record<string, unknown>,
   expectedVersion?: number,
 ) {
   const { client, spaceId, environmentId } = cmaEnv()
@@ -1000,8 +1011,16 @@ export async function updateEntry(
     throw new VersionConflictError()
   }
 
-  current.fields = localize(fields) as typeof current.fields
+  current.fields = { ...current.fields, ...localize(changed) } as typeof current.fields
   return client.entry.update({ spaceId, environmentId, entryId }, current)
+}
+
+/** CDA-resolved entities carry `sys.id`, so this narrows a resolved entry (or
+ *  an id) back to the link shape the CMA requires. */
+export function toEntryLink(value: string | { sys?: { id?: string } }) {
+  const id = typeof value === 'string' ? value : value?.sys?.id
+  if (!id) throw new Error('Cannot build an entry link without an id.')
+  return { sys: { type: 'Link', linkType: 'Entry', id } }
 }
 
 export async function publishEntry(entryId: string) {
@@ -1236,7 +1255,7 @@ when publishing.
 
 import { updateTag } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createEntry, updateEntry, VersionConflictError } from '@/lib/cma'
+import { createEntry, updateEntry, toEntryLink, VersionConflictError } from '@/lib/cma'
 import { getRawProject, slugExists } from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
 
@@ -1293,17 +1312,13 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
   const existing = await getRawProject(id)
   if (!existing) return { error: 'That project no longer exists.' }
 
-  // Carry every field the form does not render straight through, so deferred
-  // video URLs, shots and coverShot are never wiped by a save.
-  const preserved = {
-    published: existing.fields.published,
-    shots: existing.fields.shots,
-    coverShot: existing.fields.coverShot,
-    links: existing.fields.links,
-  }
-
+  // No `preserved` spread: updateEntry MERGES into the entry's own CMA fields,
+  // so `published`, `shots`, `coverShot`, `links` and the deferred video URLs
+  // survive untouched. Spreading `existing.fields` here would be actively
+  // WRONG — those come from the CDA with links already resolved into full
+  // entities, and writing them back would corrupt every reference.
   try {
-    await updateEntry(id, { ...preserved, ...fields }, existing.sys.version)
+    await updateEntry(id, fields, existing.sys.version)
   } catch (error) {
     if (error instanceof VersionConflictError) {
       return { error: 'This project changed elsewhere. Reload before saving.' }
@@ -1316,7 +1331,7 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
 }
 ```
 
-The `preserved` spread is the guard on the deferred-video promise in the spec. Fields the form does not render must be re-sent, because a CMA update **replaces** the fields object.
+Note what is **not** here: no re-sending of fields the form does not render. `updateEntry` merges into the entry's own CMA-side fields, so `shots`, `coverShot`, `published` and the deferred `videoMp4Url` / `videoWebmUrl` are preserved structurally. Re-sending them from `getRawProject` would corrupt them — the CDA resolves links into full entities, and the CMA needs links.
 
 - [ ] **Step 3: Create `components/admin/project-form.tsx`**
 
@@ -1600,7 +1615,7 @@ export async function publishProject(id: string): Promise<{ error?: string }> {
   // 3. the project itself, with published: true
   const fresh = await getRawProject(id)
   if (!fresh) return { error: 'That project no longer exists.' }
-  await updateEntry(id, { ...fresh.fields, published: true }, fresh.sys.version)
+  await updateEntry(id, { published: true }, fresh.sys.version)
   await publishEntry(id)
 
   updateTag('projects')
@@ -1613,7 +1628,7 @@ export async function unpublishProject(id: string): Promise<{ error?: string }> 
 
   // Flip the flag and publish that change, so the entry stays readable by the
   // CDA while `published: false` takes it off the site.
-  await updateEntry(id, { ...entry.fields, published: false }, entry.sys.version)
+  await updateEntry(id, { published: false }, entry.sys.version)
   await publishEntry(id)
 
   updateTag('projects')
@@ -1698,8 +1713,12 @@ export async function POST(request: Request) {
     retry(fn, { attempts: 4, baseMs: 500, shouldRetry: isRateLimited })
 
   try {
+    // Read the body ONCE, outside the retry wrapper: a retry must not re-read
+    // an already-consumed stream, and `await` cannot appear in a non-async arrow.
+    const buffer = await file.arrayBuffer()
+
     const upload = await withRetry(() =>
-      client.upload.create({ spaceId, environmentId }, { file: await file.arrayBuffer() }),
+      client.upload.create({ spaceId, environmentId }, { file: buffer }),
     )
 
     let asset = await withRetry(() =>
@@ -1809,7 +1828,7 @@ git commit -m "feat: streaming upload handler with processing poll"
 - Modify: `app/admin/actions.ts`, `app/admin/projects/[id]/page.tsx`
 
 **Interfaces:**
-- Consumes: the upload route (Task 10); `createEntry`, `updateEntry`, `getRawProject` (Tasks 6, 8)
+- Consumes: the upload route (Task 10); `createEntry`, `updateEntry`, `toEntryLink`, `getRawProject` (Tasks 6, 8)
 - Produces: `addShots(projectId: string, assets: UploadedAsset[]): Promise<{ error?: string }>`; `type UploadedAsset = { assetId: string; width: number; height: number }`
 
 - [ ] **Step 1: Add `addShots` to `app/admin/actions.ts`**
@@ -1838,14 +1857,21 @@ export async function addShots(
       width: asset.width,
       height: asset.height,
     })
-    created.push({ sys: { type: 'Link', linkType: 'Entry', id: shot.sys.id } })
+    created.push(toEntryLink(shot.sys.id))
   }
 
-  const existingShots = Array.isArray(project.fields.shots) ? project.fields.shots : []
-  const shots = [...existingShots, ...created]
-  const coverShot = project.fields.coverShot ?? created[0]
+  // project.fields comes from the CDA with include: 2, so existing shots are
+  // RESOLVED ENTITIES. Narrow them back to links before writing, or the update
+  // inlines whole entries where references belong.
+  const existingShots = Array.isArray(project.fields.shots)
+    ? (project.fields.shots as { sys?: { id?: string } }[]).map(toEntryLink)
+    : []
 
-  await updateEntry(projectId, { ...project.fields, shots, coverShot }, project.sys.version)
+  const shots = [...existingShots, ...created]
+  const existingCover = project.fields.coverShot as { sys?: { id?: string } } | undefined
+  const coverShot = existingCover ? toEntryLink(existingCover) : created[0]
+
+  await updateEntry(projectId, { shots, coverShot }, project.sys.version)
 
   updateTag('projects')
   return {}
@@ -1998,7 +2024,7 @@ git commit -m "feat: bulk image drop with per-file status and partial-failure to
 - Modify: `app/admin/actions.ts`, `app/admin/projects/[id]/page.tsx`, `lib/preview.ts`
 
 **Interfaces:**
-- Consumes: `moveItem`, `toIdArray` (Task 4); `getRawProject`, `updateEntry` (Tasks 6, 8)
+- Consumes: `moveItem`, `toIdArray` (Task 4); `getRawProject`, `updateEntry`, `toEntryLink` (Tasks 6, 8)
 - Produces: `reorderShots(projectId: string, shotIds: string[]): Promise<{ error?: string }>`; `setCover(projectId: string, shotId: string): Promise<{ error?: string }>`; `getProjectShots(id: string): Promise<AdminShot[]>`; `type AdminShot = { id: string; url: string; width: number; height: number }`
 
 - [ ] **Step 1: Add `getProjectShots` to `lib/preview.ts`**
@@ -2042,8 +2068,8 @@ export async function reorderShots(
   const project = await getRawProject(projectId)
   if (!project) return { error: 'That project no longer exists.' }
 
-  const shots = shotIds.map((id) => ({ sys: { type: 'Link', linkType: 'Entry', id } }))
-  await updateEntry(projectId, { ...project.fields, shots }, project.sys.version)
+  const shots = shotIds.map(toEntryLink)
+  await updateEntry(projectId, { shots }, project.sys.version)
 
   updateTag('projects')
   return {}
@@ -2053,8 +2079,7 @@ export async function setCover(projectId: string, shotId: string): Promise<{ err
   const project = await getRawProject(projectId)
   if (!project) return { error: 'That project no longer exists.' }
 
-  const coverShot = { sys: { type: 'Link', linkType: 'Entry', id: shotId } }
-  await updateEntry(projectId, { ...project.fields, coverShot }, project.sys.version)
+  await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.version)
 
   updateTag('projects')
   return {}
@@ -2208,11 +2233,7 @@ export async function saveOrder(projectIds: string[]): Promise<{ error?: string 
   const settings = await getSettingsEntry()
   if (!settings) return { error: 'No siteSettings entry exists. Run npm run setup:contentful.' }
 
-  await updateEntry(
-    settings.sys.id,
-    { ...settings.fields, projectOrder: projectIds },
-    settings.sys.version,
-  )
+  await updateEntry(settings.sys.id, { projectOrder: projectIds }, settings.sys.version)
   await publishEntry(settings.sys.id)
 
   // getProjects() is tagged with both, and a reorder must invalidate the feed.

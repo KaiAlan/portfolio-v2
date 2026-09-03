@@ -13,6 +13,7 @@ import {
 } from '@/lib/cma'
 import { getRawProject, getSettingsEntry, slugExists } from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
+import { parsePlaylistId } from '@/lib/music/playlist'
 import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
 
 export type SaveState = { error?: string; savedAt?: number; id?: string }
@@ -302,5 +303,42 @@ export async function saveOrder(projectIds: string[]): Promise<{ error?: string 
   // feed keeps serving the old sequence.
   updateTag('settings')
   updateTag('projects')
+  return {}
+}
+
+/** The nav player's source playlist. Accepts a pasted YouTube link or a bare
+ *  id — parsePlaylistId does the reading, so the studio never asks anyone to
+ *  extract an id by hand. Clearing the field removes the player entirely,
+ *  which is a legitimate thing to want, so empty is valid input and not an
+ *  error. */
+export async function savePlaylist(input: string): Promise<{ error?: string }> {
+  const settings = await getSettingsEntry()
+  if (!settings) {
+    return { error: 'No siteSettings entry exists. Run npm run setup:contentful.' }
+  }
+
+  const trimmed = input.trim()
+  const playlistId = trimmed ? parsePlaylistId(trimmed) : ''
+  if (playlistId === null) {
+    return { error: 'That is not a YouTube playlist link or id.' }
+  }
+
+  try {
+    await updateEntry(
+      settings.sys.id,
+      // null, not '': the empty string is a value Contentful would store,
+      // while null clears the field — the convention lib/cma.ts documents.
+      { youtubePlaylistId: playlistId || null },
+      settings.sys.updatedAt,
+    )
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      return { error: 'Settings changed elsewhere. Reload before saving.' }
+    }
+    throw error
+  }
+  await publishEntry(settings.sys.id)
+
+  updateTag('settings')
   return {}
 }

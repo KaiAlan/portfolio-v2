@@ -61,4 +61,6 @@ export type SiteSettings = {
   projectOrder: string[]
   shopOrder: string[]
   visibleMetaRows: MetaRow[]
+  /** YouTube playlist behind the nav player. Empty = no player at all. */
+  youtubePlaylistId: string
 }

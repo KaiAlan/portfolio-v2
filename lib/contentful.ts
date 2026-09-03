@@ -176,6 +176,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     visibleMetaRows: list(fields.visibleMetaRows).filter((r): r is MetaRow =>
       (META_ROWS as readonly string[]).includes(r),
     ),
+    youtubePlaylistId: str(fields.youtubePlaylistId) ?? '',
   }
 }
 

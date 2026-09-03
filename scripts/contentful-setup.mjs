@@ -114,6 +114,8 @@ const TYPES = [
       symList('projectOrder', 'Project order'),
       symList('shopOrder', 'Shop order'),
       symList('visibleMetaRows', 'Visible metadata rows', [{ in: META_ROWS }]),
+      // The nav music player's source. Empty = the player does not render.
+      sym('youtubePlaylistId', 'YouTube playlist ID'),
     ],
   },
 ]

@@ -9,23 +9,39 @@
    Never inline a hex in a component; reference a token.
 
    Light only (decision #8). No prefers-color-scheme block on purpose —
-   the warm canvas is the brand, and a dark variant would need its own
-   pass rather than an inversion.
+   a dark variant would need its own pass rather than an inversion. The
+   canvas itself went from warm off-white to pure white on 2026-09-03;
+   see the surfaces block.
    --------------------------------------------------------------------- */
 @theme {
   /* Ink */
-  --color-ink: #000000;
+  --color-ink: #1f1f1f;
   --color-ink-soft: #1d1717;
   --color-muted: #383838;
   --color-muted-soft: #414141;
   --color-on-dark: #ffffff;
 
-  /* Surfaces — canvas is warm off-white, never pure white. */
-  --color-canvas: #f7f5f3;
+  /* Surfaces. The canvas was a warm off-white (#f7f5f3) through P1 — see
+     COSMOS-DESIGN.md decision #8. Kai moved it to pure white on 2026-09-03
+     so the boards read as white paper with grey cards on them; the warm tone
+     survives only in --color-surface-warm. */
+  --color-canvas: #ffffff;
   --color-surface: #f8f8f7;
   --color-surface-alt: #f5f5f5;
   --color-surface-warm: #e8e6e4;
   --color-surface-dark: #191919;
+
+  /* The ground for a *grouped* control — the segmented studio tabs, the
+     now-playing widget. One step darker than surface-alt on purpose: those
+     controls sit on cards that are already surface-alt, and a control has to
+     stay legible as a control when it does. */
+  --color-control: #efedec;
+
+  /* The one non-neutral pair in the system, and it stays that way. Publish
+     state is the single fact in the studio worth spending a colour on;
+     everything else earns its hierarchy from ink and weight. */
+  --color-live: #d8f0e2;
+  --color-live-ink: #2c7a52;
 
   /* Borders */
   --color-hairline: #e0e0e0;
@@ -37,6 +53,9 @@
   /* Radius. Imagery is nearly square — the product grid, not the marketing
      page's 16px tiles. Interactive chrome stays fully rounded. */
   --radius-card: 4px;
+  /* The studio panel's corner. Its own step because it is the one large
+     rounded surface in the app and wants to sit between md and lg. */
+  --radius-panel: 10px;
   --radius-sm: 11px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -52,6 +71,13 @@
 :root {
   --background: var(--color-canvas);
   --foreground: var(--color-ink);
+
+  /* Height of the chrome a board's header pins beneath: the panel's own
+     header (72px) plus the 1px rule under it. The dark toolbar is NOT counted
+     — it sits outside the panel, which is the scroll container, so offsets
+     inside are measured from the panel's top rather than the viewport's.
+     Change the header's height and this is the one place that has to follow. */
+  --studio-chrome-h: 73px;
 }
 
 body {
@@ -111,4 +137,26 @@ body {
   font-weight: 450;
   line-height: 1.4;
   letter-spacing: -0.006em;
+}
+
+/* ---------------------------------------------------------------------
+   Studio board grid.
+
+   The column count is the editor's choice (1–8), set inline as --board-cols
+   by the picker rather than as a Tailwind class: a runtime value can't be a
+   utility name, since nothing would be there to generate at build time.
+
+   Phones override it outright. Eight columns of thumbnails is a decision
+   that only means anything on a wide screen, and honouring it on a 390px
+   viewport would produce eight unreadable slivers.
+   --------------------------------------------------------------------- */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--board-cols, 3), minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .board-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

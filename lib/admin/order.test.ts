@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyOrder, moveItem, toIdArray } from './order'
+import { applyOrder, moveItem, targetForInsertion, toIdArray } from './order'
 
 describe('moveItem', () => {
   it('moves an item forward', () => {
@@ -23,6 +23,36 @@ describe('moveItem', () => {
   it('returns a copy unchanged when an index is out of range', () => {
     expect(moveItem(['a', 'b'], 5, 0)).toEqual(['a', 'b'])
     expect(moveItem(['a', 'b'], 0, -1)).toEqual(['a', 'b'])
+  })
+})
+
+describe('targetForInsertion', () => {
+  // ['a','b','c','d'], dragging 'a' (index 0).
+  it('shifts gaps after the dragged card down by one', () => {
+    expect(targetForInsertion(0, 3)).toBe(2)
+  })
+
+  it('leaves gaps before the dragged card alone', () => {
+    expect(targetForInsertion(3, 1)).toBe(1)
+  })
+
+  it('treats both gaps touching the dragged card as no-ops', () => {
+    expect(targetForInsertion(2, 2)).toBeNull()
+    expect(targetForInsertion(2, 3)).toBeNull()
+  })
+
+  it('handles the leading and trailing gaps', () => {
+    expect(targetForInsertion(3, 0)).toBe(0)
+    // Gap 4 on a list of 4 is "after the last", i.e. the final index.
+    expect(targetForInsertion(0, 4)).toBe(3)
+  })
+
+  it('round-trips through moveItem to the sequence the caret promised', () => {
+    const items = ['a', 'b', 'c', 'd']
+    // Caret in the gap between 'c' and 'd' while dragging 'a'.
+    const to = targetForInsertion(0, 3)
+    expect(to).not.toBeNull()
+    expect(moveItem(items, 0, to as number)).toEqual(['b', 'c', 'a', 'd'])
   })
 })
 

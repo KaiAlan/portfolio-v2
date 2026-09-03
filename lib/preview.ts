@@ -24,6 +24,7 @@ export type AdminProject = {
   title: string
   slug: string
   category: string
+  tags: string[]
   state: PublishState
   coverUrl?: string
   updatedAt: string
@@ -64,6 +65,11 @@ export async function listProjects(): Promise<AdminProject[]> {
       title: (e.fields.title as string) ?? '(untitled)',
       slug: (e.fields.slug as string) ?? '',
       category: (e.fields.category as string) ?? '',
+      // Same defensive filter lib/contentful.ts uses: `tags` is an optional
+      // symbol list, so an entry that never set it has no array at all.
+      tags: Array.isArray(e.fields.tags)
+        ? e.fields.tags.filter((t): t is string => typeof t === 'string')
+        : [],
       state: publishState(e.sys),
       coverUrl: coverUrlOf(e.fields),
       updatedAt: e.sys.updatedAt,

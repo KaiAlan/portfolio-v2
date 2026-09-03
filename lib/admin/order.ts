@@ -10,6 +10,22 @@ export function moveItem<T>(items: T[], from: number, to: number): T[] {
   return next
 }
 
+/** Converts a drop *gap* into the index `moveItem` should land the card at.
+ *
+ *  A gap is counted between cards — 0 is before the first, `length` is after
+ *  the last — which is what a drop caret actually points at. `moveItem` instead
+ *  takes the index the card ends up occupying, and since it removes the card
+ *  before re-inserting it, every gap after the card's own position shifts down
+ *  by one. That shift is the entire conversion, and it is the easiest thing
+ *  here to get wrong by one.
+ *
+ *  Returns null when the drop would not move anything: both gaps either side
+ *  of a card put it straight back where it was. */
+export function targetForInsertion(from: number, insertion: number): number | null {
+  const to = insertion > from ? insertion - 1 : insertion
+  return to === from ? null : to
+}
+
 export function toIdArray<T extends { id: string }>(items: T[]): string[] {
   return items.map((item) => item.id)
 }

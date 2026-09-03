@@ -210,7 +210,11 @@ async function seed() {
             slug: slugify(spec.t),
             description: `${spec.t} — placeholder record for layout testing.`,
             category: spec.cat,
-            tags: spec.tags,
+            // Was `spec.tags`, which no spec has ever defined — every seeded
+            // project went in with an empty tags field. The specs carry `tag`,
+            // the key into TAGS, whose value is the comma-joined list the
+            // image search also uses.
+            tags: TAGS[spec.tag]?.split(',') ?? [],
             year: spec.year,
             type: spec.type,
             tools: spec.tools,

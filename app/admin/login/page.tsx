@@ -1,34 +1,25 @@
-'use client'
+import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { getSession } from '@/lib/session'
+import LoginForm from './login-form'
 
-import { useActionState } from 'react'
-import { login, type LoginState } from './actions'
+/** The studio chrome and its auth guard live in the `(studio)` route group, so
+ *  this page deliberately sits outside them. Nesting it under the guard would
+ *  loop: the guard redirects a logged-out visitor to the very page the guard
+ *  is wrapping.
+ *
+ *  The real already-logged-in bounce is in `proxy.ts`, which decrypts the
+ *  cookie before anything streams. The check below is defence in depth only —
+ *  under Cache Components a `redirect()` here is soft (200 + an RSC payload
+ *  instruction), so it must never be relied on as the gate. */
+export const metadata: Metadata = {
+  title: 'Studio',
+  robots: { index: false, follow: false },
+}
 
-const initial: LoginState = {}
+export default async function LoginPage() {
+  const session = await getSession()
+  if (session.isLoggedIn) redirect('/admin')
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(login, initial)
-
-  return (
-    <main className="flex min-h-dvh items-center justify-center bg-canvas p-6">
-      <form action={formAction} className="flex w-full max-w-xs flex-col gap-3">
-        <h1 className="type-body font-medium tracking-tight text-ink">Studio</h1>
-        <input
-          type="password"
-          name="password"
-          autoFocus
-          autoComplete="current-password"
-          placeholder="Password"
-          className="rounded-lg border border-card-edge bg-canvas px-3 py-2 text-ink"
-        />
-        <button
-          type="submit"
-          disabled={pending}
-          className="type-button rounded-pill bg-surface-warm px-3 py-2 text-ink disabled:opacity-50"
-        >
-          {pending ? 'Checking…' : 'Enter'}
-        </button>
-        {state.error && <p className="type-meta text-muted">{state.error}</p>}
-      </form>
-    </main>
-  )
+  return <LoginForm />
 }

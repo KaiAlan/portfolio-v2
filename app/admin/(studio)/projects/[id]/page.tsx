@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import ProjectForm, { type ProjectFormValues } from '@/components/admin/project-form'
+import DropZone from '@/components/admin/drop-zone'
 import { getRawProject } from '@/lib/preview'
 import { publishState } from '@/lib/admin/publish-state'
 
@@ -47,6 +48,8 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
     <div className="flex flex-col gap-6">
       <h1 className="type-body font-medium tracking-tight text-ink">{values.title}</h1>
       <ProjectForm values={values} state={publishState(entry.sys)} />
+      {/* Only for a saved project: shots need something to attach to. */}
+      <DropZone projectId={id} />
     </div>
   )
 }

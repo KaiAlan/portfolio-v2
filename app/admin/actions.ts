@@ -2,7 +2,15 @@
 
 import { updateTag } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { cmaEnv, createEntry, publishEntry, updateEntry, VersionConflictError } from '@/lib/cma'
+import {
+  cmaEnv,
+  createEntry,
+  publishEntry,
+  toAssetLink,
+  toEntryLink,
+  updateEntry,
+  VersionConflictError,
+} from '@/lib/cma'
 import { getRawProject, slugExists } from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
 import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
@@ -186,6 +194,55 @@ export async function unpublishProject(id: string): Promise<{ error?: string }> 
   // leaves the entry resolvable for anything still linking to it.
   await updateEntry(id, { published: false }, entry.sys.updatedAt)
   await publishEntry(id)
+
+  updateTag('projects')
+  return {}
+}
+
+export type UploadedAsset = { assetId: string; width: number; height: number }
+
+/** Creates one `shot` per uploaded asset and appends them to the project.
+ *  If the project has no cover yet, the first shot becomes it — otherwise a
+ *  freshly created project renders nothing, since toProject() drops any
+ *  project without a coverShot.
+ *
+ *  Shots are created sequentially rather than through mapWithLimit: they are
+ *  cheap metadata-only writes, and the uploads that preceded them already
+ *  spent the rate-limit budget. */
+export async function addShots(
+  projectId: string,
+  assets: UploadedAsset[],
+): Promise<{ error?: string }> {
+  if (assets.length === 0) return {}
+
+  const project = await getRawProject(projectId)
+  if (!project) return { error: 'That project no longer exists.' }
+
+  const created = []
+  for (const asset of assets) {
+    const shot = await createEntry('shot', {
+      kind: 'image',
+      // toAssetLink, not toEntryLink: `image` is an Asset link, and a mislabelled
+      // linkType is accepted by the type system and rejected by Contentful.
+      image: toAssetLink(asset.assetId),
+      width: asset.width,
+      height: asset.height,
+    })
+    created.push(toEntryLink(shot.sys.id))
+  }
+
+  // project.fields comes from the CDA with include: 2, so existing shots are
+  // RESOLVED ENTITIES. Narrow them back to links before writing, or the update
+  // inlines whole entries where references belong.
+  const existingShots = Array.isArray(project.fields.shots)
+    ? (project.fields.shots as { sys?: { id?: string } }[]).map(toEntryLink)
+    : []
+
+  const shots = [...existingShots, ...created]
+  const existingCover = project.fields.coverShot as { sys?: { id?: string } } | undefined
+  const coverShot = existingCover ? toEntryLink(existingCover) : created[0]
+
+  await updateEntry(projectId, { shots, coverShot }, project.sys.updatedAt)
 
   updateTag('projects')
   return {}

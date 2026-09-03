@@ -4,7 +4,7 @@ Written for a session starting cold. Read `PLAN.md` for the full executable
 plan and `CONTEXT.md` for why each decision was made; this file is the
 current state and what to do next.
 
-**Last updated:** 2026-08-23
+**Last updated:** 2026-09-03
 **Repo:** https://github.com/KaiAlan/portfolio-v2 (public, MIT)
 **Local:** `/home/kaialan/portfolio-v2` (WSL2; moved off `C:\home\claude-projects\portfolio` on 2026-09-03)
 
@@ -54,6 +54,65 @@ meant editing code.
 - Intercepting-route lightbox at `app/@modal/(.)work/[slug]`.
 - `/shop`, `robots.ts`, `sitemap.ts`, `loading`, `not-found`.
 
+### P3 — The studio (v1, localhost-only)
+Built against `docs/superpowers/plans/2026-09-03-admin-studio.md`, all 14
+tasks complete. **Not deployed and not deployable as-is** — see the warning
+below.
+
+- **Auth**: password + `iron-session`, gate lives in `proxy.ts` and decrypts
+  the cookie before the response streams (presence-only checking let a
+  forged cookie through — see the comment there). Rate-limited login.
+  **No TOTP / recovery codes** — deliberately deferred, and the reason it
+  stays localhost-only.
+- **Shell**: `app/admin/(studio)/` — sidebar with Projects / Order, dark UI.
+- **Project form**: all fields, drafts save without publishing, optimistic
+  locking on `sys.updatedAt` (not `version` — the Preview API never returns
+  it). `null` clears a field, `undefined` leaves it alone; the form must
+  emit `null` for an emptied input or the old value silently survives a save
+  that reports success.
+- **Upload**: `app/api/admin/upload/route.ts` — bytes through a Route
+  Handler (Server Actions cap bodies at 1 MB), Contentful CMA only.
+  Validates real image dimensions *before* publishing and bins anything that
+  isn't an image, so a bad drop can't leave junk assets against the 50 GB/mo
+  bandwidth cap. R2 is not wired in — video stays out of the UI.
+- **Bulk drop + reorder**: drop many files at once, per-file status,
+  partial-failure tolerant; native drag-and-drop (no library) to reorder
+  shots and choose the cover.
+- **Publish/unpublish**: walks shots → their image assets → the shots → the
+  project, so nothing goes live half-linked.
+- **Order panel** (`/admin/order`): drag-reorder live projects, one
+  `siteSettings.projectOrder` write on Save — never per-entry, never 80
+  writes. `lib/admin/order.ts` now also exports `applyOrder`, a pure copy of
+  the private sort in `lib/contentful.ts` kept deliberately in step with it
+  (that file is never touched — see Traps below) so the order panel shows
+  the same sequence the site will render, not newest-first.
+- **Cache invalidation**: every mutation calls `updateTag`, never bare
+  `revalidateTag` (deprecated without a profile in this Next version).
+
+**Verified for real, not by inspection** — a disposable `test-e2e-verify`
+project was created, given 4 real uploaded images, published, and deleted;
+an existing seeded project's video-bearing shot was confirmed to survive an
+unrelated project-level edit untouched; the reorder write was confirmed
+against Contentful directly and reverted. `npm run build` was also run once
+clean (`rm -rf .next && npm run build`) and the client bundle grepped for
+`CONTENTFUL_MANAGEMENT_TOKEN`, `ADMIN_PASSWORD` and `SESSION_SECRET` — none
+present. **Still unverified: the actual browser UI** — upload progress,
+drag-and-drop feel, the studio's dark theme. Nobody has opened `/admin` in a
+browser yet, same caveat as the public site below.
+
+**⚠ Do not deploy `/admin` yet.** Auth is a single password behind a
+session cookie — sufficient for localhost, not for the public internet.
+TOTP + recovery codes are required first (see Deferred, P3 plan). The repo
+is also still **public** with this auth code now pushed to it; decision #4
+in `PLAN.md` said to flip it private before auth landed, and that has not
+happened.
+
+**Deferred, with reasons, not gaps:** Cloudflare R2 / presigned uploads /
+video flow (no card on file yet); TOTP + recovery codes + login rate
+limiting beyond what exists (required before any public deploy); the asset
+library (search, copy-URL, standalone delete — out of v1 scope); Shop CRUD
+(out of v1 scope); `scripts/encode.mjs`.
+
 ---
 
 ## Not done
@@ -80,9 +139,8 @@ meant editing code.
 - P1.8 — nav polish: profile-pic hover → about overlay (copy, links, quote).
 - P1.9 — OG images (`opengraph-image.tsx`), richer metadata.
 - P2 — deploy; replace fixtures with ~15 real projects.
-- P3 — `/admin` studio: auth (password + TOTP + `iron-session`), asset
-  panel, project form, drag-reorder, presigned R2 uploads,
-  `scripts/encode.mjs`.
+- P3 hardening — TOTP + recovery codes, before `/admin` can ever be public.
+  See "P3 — The studio" under Done for what already shipped.
 - P4 — bulk-import the remaining ~55 projects.
 
 ---
@@ -228,13 +286,20 @@ goes in at P2. It deliberately leaves `siteSettings` alone.
   `/users/me` and still 401 everywhere with
   `OrganizationAccessGrantRequired`; tell-tale is `GET /spaces` →
   `total: 0`.
+- **`applyOrder` exists twice, on purpose.** `lib/contentful.ts` (the public
+  read path) and `lib/admin/order.ts` (the studio) each have their own copy
+  of the same sort. `lib/contentful.ts` is never modified by studio work —
+  that is a hard rule in the P3 plan — so the studio couldn't import the
+  original. If the ordering rule ever changes, change both.
 
 ---
 
 ## Next session
 
-1. `npm run dev`, open it, judge the morph and the motion.
-2. Then either P1.8/P1.9 to close out P1, or chase the account setup that
-   unblocks P2.
-
-Before P3 lands auth: **flip the repo private** (plan decision #4).
+1. `npm run dev`, open it, judge the morph and the motion — public site and
+   `/admin` both still unverified in an actual browser.
+2. Flip the repo private (plan decision #4) — overdue now that P3 auth code
+   is on GitHub. `gh repo edit KaiAlan/portfolio-v2 --visibility private
+   --accept-visibility-change-consequences`.
+3. Then either P1.8/P1.9 to close out P1, TOTP to make `/admin` safe to
+   eventually deploy, or chase the account setup that unblocks P2.

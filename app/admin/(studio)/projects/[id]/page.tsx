@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import ProjectForm, { type ProjectFormValues } from '@/components/admin/project-form'
 import { getRawProject } from '@/lib/preview'
+import { publishState } from '@/lib/admin/publish-state'
 
 /** Uncached preview read by design — see the note in the (studio) layout. */
 export const instant = false
@@ -20,7 +21,7 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
     return (
       <div className="flex flex-col gap-6">
         <h1 className="type-body font-medium tracking-tight text-ink">New project</h1>
-        <ProjectForm values={EMPTY} />
+        <ProjectForm values={EMPTY} state="draft" />
       </div>
     )
   }
@@ -45,7 +46,7 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
   return (
     <div className="flex flex-col gap-6">
       <h1 className="type-body font-medium tracking-tight text-ink">{values.title}</h1>
-      <ProjectForm values={values} />
+      <ProjectForm values={values} state={publishState(entry.sys)} />
     </div>
   )
 }

@@ -2,9 +2,10 @@
 
 import { updateTag } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createEntry, updateEntry, VersionConflictError } from '@/lib/cma'
+import { cmaEnv, createEntry, publishEntry, updateEntry, VersionConflictError } from '@/lib/cma'
 import { getRawProject, slugExists } from '@/lib/preview'
 import { isValidSlug } from '@/lib/admin/slug'
+import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
 
 export type SaveState = { error?: string; savedAt?: number; id?: string }
 
@@ -88,4 +89,104 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
 
   updateTag('projects')
   return { savedAt: Date.now(), id }
+}
+
+type Link = { sys: { id: string } }
+
+const linkIds = (value: unknown): string[] =>
+  Array.isArray(value) ? (value as Link[]).map((l) => l?.sys?.id).filter(Boolean) : []
+
+/** mapWithLimit SETTLES — it never throws, so a rejection is a value you have
+ *  to look at. Every publish step below must be checked before the next one
+ *  runs, or the bottom-up ordering is decorative: the project would publish on
+ *  top of shots that failed, which is the exact silent-missing-images outcome
+ *  the ordering exists to prevent. */
+function firstFailure(results: PromiseSettledResult<unknown>[], what: string): string | undefined {
+  const rejected = results.filter((r) => r.status === 'rejected')
+  if (rejected.length === 0) return undefined
+  const reason = (rejected[0] as PromiseRejectedResult).reason
+  const detail = reason instanceof Error ? reason.message : String(reason)
+  return `${rejected.length} of ${results.length} ${what} failed to publish. Nothing was published. First error: ${detail}`
+}
+
+/** Publishes bottom-up: assets, then shots, then the project.
+ *
+ *  Order is not cosmetic. The CDA resolves links only to PUBLISHED records and
+ *  lib/contentful.ts uses `.withoutUnresolvableLinks`, so publishing a project
+ *  whose shots are still drafts yields a project with its images silently
+ *  missing — no error anywhere. */
+export async function publishProject(id: string): Promise<{ error?: string }> {
+  const { client, spaceId, environmentId } = cmaEnv()
+  const entry = await getRawProject(id)
+  if (!entry) return { error: 'That project no longer exists.' }
+
+  const coverId = (entry.fields.coverShot as Link | undefined)?.sys?.id
+  const uniqueShotIds = [...new Set([...linkIds(entry.fields.shots), ...(coverId ? [coverId] : [])])]
+
+  // Contentful refuses to publish a project whose required coverShot is unset,
+  // so say why here rather than surfacing a raw validation payload.
+  if (!coverId) return { error: 'Give this project a cover shot before publishing.' }
+
+  const withRetry = <T>(fn: () => Promise<T>) =>
+    retry(fn, { attempts: 4, baseMs: 500, shouldRetry: isRateLimited })
+
+  // 1. read every shot, to discover the assets behind them
+  const shots = await mapWithLimit(uniqueShotIds, 3, (shotId) =>
+    withRetry(() => client.entry.get({ spaceId, environmentId, entryId: shotId })),
+  )
+  const unread = firstFailure(shots, 'shots could not be read and')
+  if (unread) return { error: unread }
+
+  const assetIds = new Set<string>()
+  for (const result of shots) {
+    if (result.status !== 'fulfilled') continue
+    const image = result.value.fields?.image?.['en-US'] as Link | undefined
+    if (image?.sys?.id) assetIds.add(image.sys.id)
+  }
+
+  // 2. the assets
+  const assets = await mapWithLimit([...assetIds], 3, async (assetId) =>
+    withRetry(async () => {
+      const asset = await client.asset.get({ spaceId, environmentId, assetId })
+      if (asset.sys.publishedVersion) return asset
+      // v12 plain client takes the version from the payload's sys, not params.
+      return client.asset.publish({ spaceId, environmentId, assetId }, asset)
+    }),
+  )
+  const badAssets = firstFailure(assets, 'assets')
+  if (badAssets) return { error: badAssets }
+
+  // 3. the shot entries
+  const published = await mapWithLimit(uniqueShotIds, 3, async (shotId) =>
+    withRetry(async () => {
+      const shot = await client.entry.get({ spaceId, environmentId, entryId: shotId })
+      return client.entry.publish({ spaceId, environmentId, entryId: shotId }, shot)
+    }),
+  )
+  const badShots = firstFailure(published, 'shots')
+  if (badShots) return { error: badShots }
+
+  // 4. the project itself, with published: true
+  const fresh = await getRawProject(id)
+  if (!fresh) return { error: 'That project no longer exists.' }
+  await updateEntry(id, { published: true }, fresh.sys.updatedAt)
+  await publishEntry(id)
+
+  updateTag('projects')
+  return {}
+}
+
+export async function unpublishProject(id: string): Promise<{ error?: string }> {
+  const entry = await getRawProject(id)
+  if (!entry) return { error: 'That project no longer exists.' }
+
+  // Flip the flag and publish that change, so the entry stays readable by the
+  // CDA while `published: false` takes it off the site. A real CMA unpublish
+  // would also work, but this keeps one mechanism for "off the site" and
+  // leaves the entry resolvable for anything still linking to it.
+  await updateEntry(id, { published: false }, entry.sys.updatedAt)
+  await publishEntry(id)
+
+  updateTag('projects')
+  return {}
 }

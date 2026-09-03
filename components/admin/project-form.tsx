@@ -1,8 +1,14 @@
 'use client'
 
-import { useActionState } from 'react'
-import { saveProject, type SaveState } from '@/app/admin/actions'
+import { useActionState, useState, useTransition } from 'react'
+import {
+  publishProject,
+  saveProject,
+  unpublishProject,
+  type SaveState,
+} from '@/app/admin/actions'
 import { slugify } from '@/lib/admin/slug'
+import type { PublishState } from '@/lib/admin/publish-state'
 
 export type ProjectFormValues = {
   id: string
@@ -22,9 +28,20 @@ const CATEGORIES = ['Product design', 'Graphics & Socials', 'Creatives', 'Framer
 const field = 'rounded-lg border border-card-edge bg-canvas px-3 py-2 text-ink type-body'
 const initial: SaveState = {}
 
-const ProjectForm = ({ values }: { values: ProjectFormValues }) => {
+const ProjectForm = ({ values, state: publish }: { values: ProjectFormValues; state: PublishState }) => {
   const [state, formAction, pending] = useActionState(saveProject, initial)
+  const [busy, startTransition] = useTransition()
+  // publishProject returns its failures rather than throwing, so they have to
+  // be rendered or a half-finished publish looks exactly like a successful one.
+  const [publishError, setPublishError] = useState<string>()
   const isNew = values.id === 'new'
+
+  const run = (fn: (id: string) => Promise<{ error?: string }>) =>
+    startTransition(async () => {
+      setPublishError(undefined)
+      const result = await fn(values.id)
+      if (result.error) setPublishError(result.error)
+    })
 
   return (
     <form action={formAction} className="flex max-w-xl flex-col gap-3">
@@ -109,8 +126,39 @@ const ProjectForm = ({ values }: { values: ProjectFormValues }) => {
         >
           {pending ? 'Saving…' : 'Save draft'}
         </button>
+        {!isNew && publish === 'draft' && (
+          <button
+            type="button"
+            disabled={pending || busy}
+            onClick={() => run(publishProject)}
+            className="type-button rounded-pill bg-surface-warm px-3 py-1.5 text-ink disabled:opacity-50"
+          >
+            {busy ? 'Publishing…' : 'Publish'}
+          </button>
+        )}
+        {!isNew && publish !== 'draft' && (
+          <>
+            <button
+              type="button"
+              disabled={pending || busy}
+              onClick={() => run(publishProject)}
+              className="type-button rounded-pill bg-surface-warm px-3 py-1.5 text-ink disabled:opacity-50"
+            >
+              {busy ? 'Publishing…' : 'Publish'}
+            </button>
+            <button
+              type="button"
+              disabled={pending || busy}
+              onClick={() => run(unpublishProject)}
+              className="type-button rounded-pill px-3 py-1.5 text-muted disabled:opacity-50"
+            >
+              Unpublish
+            </button>
+          </>
+        )}
         {state.error && <span className="type-meta text-muted">{state.error}</span>}
         {state.savedAt && !state.error && <span className="type-meta text-muted">Saved.</span>}
+        {publishError && <span className="type-meta text-muted">{publishError}</span>}
       </div>
     </form>
   )

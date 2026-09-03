@@ -2,9 +2,11 @@
 
 import { LayoutGroup } from 'motion/react'
 import { useMemo } from 'react'
+import CategoryLinks from '@/components/navbar/category-links'
 import { useCategoryFilter } from '@/hooks/use-category-filter'
-import { CATEGORIES, type Project } from '@/lib/types'
-import FilterTabs from './filter-tabs'
+import { useHideOnScroll } from '@/hooks/use-hide-on-scroll'
+import type { Project } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import MasonryLayout, { type MasonryItem } from './masonry-layout'
 import ProjectCard from './project-card'
 
@@ -22,12 +24,7 @@ type FeedProps = {
 
 const Feed = ({ projects }: FeedProps) => {
   const { active, setCategory } = useCategoryFilter()
-
-  // Only offer filters that would actually return something.
-  const available = useMemo(() => {
-    const present = new Set(projects.map((p) => p.category))
-    return CATEGORIES.filter((c) => present.has(c))
-  }, [projects])
+  const hidden = useHideOnScroll()
 
   const filtered = useMemo(
     () => (active ? projects.filter((p) => p.category === active) : projects),
@@ -50,7 +47,22 @@ const Feed = ({ projects }: FeedProps) => {
 
   return (
     <>
-      <FilterTabs categories={available} active={active} onChange={setCategory} />
+      {/* Sticky directly beneath the 64px header, and pulled full-bleed out of
+          the page's padding so cards scroll under an opaque bar rather than
+          past its edges. The tabs still line up with the first column.
+
+          Hiding slides it up by its own height, which tucks it exactly behind
+          the opaque z-50 header rather than moving it off-screen — so nothing
+          reflows and the row reappears from under the header, not from the
+          top of the viewport. */}
+      <div
+        className={cn(
+          'sticky top-16 z-40 -mx-4 bg-canvas px-4 pt-1 pb-5 transition-transform duration-300 ease-out sm:-mx-6 sm:px-6 lg:-mx-9 lg:px-9',
+          hidden && '-translate-y-full',
+        )}
+      >
+        <CategoryLinks active={active} onChange={setCategory} />
+      </div>
 
       <LayoutGroup>
         <MasonryLayout

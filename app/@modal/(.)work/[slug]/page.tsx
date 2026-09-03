@@ -29,6 +29,14 @@ export const instant = false
  * as ?c= on the card's href. Browsing inside the lightbox therefore walks
  * the same set the user was actually looking at, not the whole catalogue.
  */
+/**
+ * `searchParams` and `params` are runtime data. Reading them made this route
+ * non-prerenderable and every open a blocking server round trip — ~1s on a
+ * warm dev server — so the access needs a Suspense boundary above it. That
+ * boundary lives in `app/@modal/layout.tsx`, NOT here: a boundary inside this
+ * file would be keyed by [slug] and remount on every prev/next, blinking the
+ * whole lightbox out and back.
+ */
 const WorkModal = async ({ params, searchParams }: ModalProps) => {
   const [{ slug }, { c }] = await Promise.all([params, searchParams])
   const [project, settings, all] = await Promise.all([
@@ -49,7 +57,6 @@ const WorkModal = async ({ params, searchParams }: ModalProps) => {
 
   return (
     <Lightbox
-      layoutId={`card-${project.id}`}
       prevHref={prev ? `/work/${prev.slug}${query}` : null}
       nextHref={next ? `/work/${next.slug}${query}` : null}
     >

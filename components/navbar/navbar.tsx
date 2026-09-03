@@ -1,28 +1,34 @@
-import Link from 'next/link'
 import { Suspense } from 'react'
-import NavLinks, { NavLinksList } from './nav-links'
+import PrimaryLinks, { PrimaryLinksList } from './primary-links'
+import ProfileCard from './profile-card'
 
 /**
- * Full-bleed sticky header. Sits directly on the canvas with no border and
- * no shadow — elevation in this system is either absent or the one soft
- * float, and the header is flat.
+ * Full-bleed sticky header: identity and page links. The category filter is
+ * NOT here — it belongs to the homepage, so the feed renders it as its own
+ * sticky row directly beneath this one. The two stack visually and scroll as
+ * one, without the header having to know which page it is on.
  *
- * No search field: decision #15 keeps search out of v1. Curation is the
- * point, and a search box is a maintenance tax on a feed of tens of items.
+ * Opaque, never translucent: this bar is constant on every page, so it must
+ * read as one fixed plane rather than picking up whatever scrolls beneath it.
+ *
+ * Sits directly on the canvas with no border and no shadow — elevation in this
+ * system is either absent or the one soft float, and the header is flat.
+ *
+ * No search field: decision #15 keeps search out of v1. Curation is the point,
+ * and a search box is a maintenance tax on a feed of tens of items.
  */
 const Navbar = () => (
-  <header className="sticky top-0 z-50 w-full bg-canvas/85 backdrop-blur-md">
+  <header className="sticky top-0 z-50 w-full bg-canvas">
     <div className="flex h-16 w-full items-center justify-between gap-6 px-4 sm:px-6 lg:px-9">
-      <div className="flex items-center gap-6">
-        <Link href="/" className="type-body font-medium tracking-tight text-ink">
-          Kaialan
-        </Link>
-        <Suspense fallback={<NavLinksList pathname={null} />}>
-          <NavLinks />
+      <div className="flex min-w-0 items-center gap-6">
+        <ProfileCard />
+
+        <Suspense fallback={<PrimaryLinksList pathname={null} />}>
+          <PrimaryLinks />
         </Suspense>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <a
           href="https://x.com/kaialan__"
           target="_blank"

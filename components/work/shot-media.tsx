@@ -1,7 +1,9 @@
 'use client'
 
+import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { imageUrl, srcSet, videoSources } from '@/lib/media'
+import { MORPH_SPRING } from '@/lib/motion'
 import type { Shot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -12,6 +14,16 @@ import { cn } from '@/lib/utils'
  * so scrolling a long project never leaves several decoding at once. The
  * intrinsic width/height are always set, so the page reserves the right
  * box before anything loads and the scroll position never jumps.
+ *
+ * Sizing: the shot is contained, never full-bleed. `max-h-[80vh]` with
+ * `w-auto` lets the element shrink-wrap to its own intrinsic ratio, which
+ * both centres it and leaves the next shot peeking below — the cue that
+ * there is more to scroll.
+ *
+ * `layoutId` is the far end of the card -> lightbox morph and belongs on the
+ * media element itself, so the animated box is exactly the rendered image
+ * box. Passing it to a wrapper div instead would morph to the wrapper's
+ * full-width box and overshoot.
  */
 
 type ShotMediaProps = {
@@ -19,12 +31,28 @@ type ShotMediaProps = {
   priority?: boolean
   className?: string
   sizes?: string
+  /** Set on the cover shot only — the one the grid card morphs into. */
+  layoutId?: string
 }
 
-const ShotMedia = ({ shot, priority = false, className, sizes = '100vw' }: ShotMediaProps) => {
+const ShotMedia = ({
+  shot,
+  priority = false,
+  className,
+  sizes = '100vw',
+  layoutId,
+}: ShotMediaProps) => {
   const isVideo = shot.kind === 'video' && (shot.videoMp4Url || shot.videoWebmUrl)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
+  const [loaded, setLoaded] = useState(false)
   const [onScreen, setOnScreen] = useState(false)
+
+  // A cached image can finish decoding before hydration, so onLoad never
+  // fires and the skeleton would sit there forever. Check `complete` once.
+  useEffect(() => {
+    if (imageRef.current?.complete) setLoaded(true)
+  }, [])
 
   useEffect(() => {
     if (!isVideo) return
@@ -45,10 +73,14 @@ const ShotMedia = ({ shot, priority = false, className, sizes = '100vw' }: ShotM
     else el.pause()
   }, [onScreen])
 
+  const box = 'max-h-[80vh] w-auto max-w-full rounded-card bg-surface-warm object-contain'
+
   if (isVideo) {
     return (
-      <video
+      <motion.video
         ref={videoRef}
+        layoutId={layoutId}
+        transition={MORPH_SPRING}
         muted
         loop
         playsInline
@@ -56,17 +88,21 @@ const ShotMedia = ({ shot, priority = false, className, sizes = '100vw' }: ShotM
         poster={imageUrl(shot.imageUrl, 1600)}
         width={shot.width}
         height={shot.height}
-        className={cn('h-auto w-full rounded-card bg-surface-warm', className)}
+        className={cn(box, className)}
       >
         {videoSources(shot).map((source) => (
           <source key={source.src} src={source.src} type={source.type} />
         ))}
-      </video>
+      </motion.video>
     )
   }
 
   return (
-    <img
+    <motion.img
+      ref={imageRef}
+      onLoad={() => setLoaded(true)}
+      layoutId={layoutId}
+      transition={MORPH_SPRING}
       src={imageUrl(shot.imageUrl, 1600)}
       srcSet={srcSet(shot.imageUrl, shot.width)}
       sizes={sizes}
@@ -76,7 +112,10 @@ const ShotMedia = ({ shot, priority = false, className, sizes = '100vw' }: ShotM
       loading={priority ? 'eager' : 'lazy'}
       decoding="async"
       fetchPriority={priority ? 'high' : 'auto'}
-      className={cn('h-auto w-full rounded-card bg-surface-warm', className)}
+      // The grey box is already reserved from width/height, so it pulses in
+      // place until the pixels arrive. No opacity fade here: the background
+      // and the image share one element, so fading would take both.
+      className={cn(box, !loaded && 'animate-pulse', className)}
     />
   )
 }

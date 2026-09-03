@@ -30,6 +30,9 @@
   /* Borders */
   --color-hairline: #e0e0e0;
   --color-border-strong: #d0d0d0;
+  /* Every feed card carries this. Without it a shot that is white to the edge
+     dissolves into the canvas and the grid loses its structure. */
+  --color-card-edge: #ebebeb;
 
   /* Radius. Imagery is nearly square — the product grid, not the marketing
      page's 16px tiles. Interactive chrome stays fully rounded. */
@@ -39,7 +42,8 @@
   --radius-lg: 16px;
   --radius-pill: 9999px;
 
-  /* One soft wide shadow carries every lift. There are no bordered cards. */
+  /* One soft wide shadow carries every lift. Feed cards are the exception to
+     the no-borders rule — see --color-card-edge. */
   --shadow-float: 0 6px 44px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.03);
 
   --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -57,10 +61,15 @@ body {
 }
 
 /* The masonry positions cards absolutely; nothing should cause sideways
-   scroll. */
+   scroll.
+
+   `clip`, never `hidden`: overflow-x:hidden forces overflow-y to `auto`,
+   which makes html/body a scroll container and silently breaks every
+   position:sticky on the page — the navbar and the detail panel both just
+   scrolled away. `clip` blocks the overflow without creating one. */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* ---------------------------------------------------------------------

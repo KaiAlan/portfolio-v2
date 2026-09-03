@@ -27,21 +27,31 @@ export type MasonryItem = {
 
 export type Placement = { left: number; top: number; width: number; height: number }
 
-const GUTTER = 16
+/** Gap between cards, on both axes. Scales with width so a wide screen reads
+ *  as airy rather than as the same layout stretched wider. */
+function gutterFor(width: number) {
+  if (width < 600) return 16
+  if (width < 1200) return 24
+  return 32
+}
 
-/** Container width, not viewport — the page has ~72px of gutter at lg. */
+/** Container width, NOT viewport — the page carries 72px of horizontal padding
+ *  at lg, so the five-column jump intended at a 1560px viewport is written
+ *  here as 1488px of container. */
 function columnCount(width: number) {
   if (width < 600) return 1
   if (width < 900) return 2
   if (width < 1200) return 3
-  return 4
+  if (width < 1488) return 4
+  return 5
 }
 
 function computeLayout(items: MasonryItem[], width: number) {
   if (!width) return { placements: new Map<string, Placement>(), height: 0 }
 
   const columns = columnCount(width)
-  const columnWidth = (width - GUTTER * (columns - 1)) / columns
+  const gutter = gutterFor(width)
+  const columnWidth = (width - gutter * (columns - 1)) / columns
   const columnHeights = new Array<number>(columns).fill(0)
   const placements = new Map<string, Placement>()
 
@@ -54,15 +64,15 @@ function computeLayout(items: MasonryItem[], width: number) {
 
     const itemHeight = columnWidth / (item.aspect || 1)
     placements.set(item.id, {
-      left: target * (columnWidth + GUTTER),
+      left: target * (columnWidth + gutter),
       top: columnHeights[target],
       width: columnWidth,
       height: itemHeight,
     })
-    columnHeights[target] += itemHeight + GUTTER
+    columnHeights[target] += itemHeight + gutter
   }
 
-  return { placements, height: Math.max(...columnHeights, 0) - GUTTER }
+  return { placements, height: Math.max(...columnHeights, 0) - gutter }
 }
 
 type MasonryLayoutProps = {
@@ -82,7 +92,11 @@ const MasonryLayout = ({ items, renderItem, className }: MasonryLayoutProps) => 
       ref={ref}
       className={cn(
         'w-full',
-        measured ? 'relative' : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+        measured
+          ? 'relative'
+          : // Mirrors the measured layout's tiers and gutters so the handover
+            // from fallback to masonry is not a visible jump.
+            'grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4 min-[1560px]:grid-cols-5',
         className,
       )}
       style={measured ? { height: height > 0 ? height : undefined } : undefined}

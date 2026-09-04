@@ -8,10 +8,12 @@ import {
   saveProject,
   unpublishProject,
   type SaveState,
+  type UploadedAsset,
 } from '@/app/admin/actions'
 import type { PublishState } from '@/lib/admin/publish-state'
 import type { AdminShot } from '@/lib/preview'
 import DropZone from './drop-zone'
+import NewProjectCanvas from './new-project-canvas'
 import ProjectFields, { type ProjectFormValues } from './project-fields'
 import ShotCanvas from './shot-canvas'
 
@@ -59,6 +61,10 @@ const ProjectEditor = ({
   // publishProject returns its failures rather than throwing, so they have to
   // be rendered or a half-finished publish looks exactly like a successful one.
   const [publishError, setPublishError] = useState<string>()
+  // Shots dropped before the project exists. Held here rather than inside the
+  // canvas because the FORM needs them too — they ride along as a hidden field
+  // so one Save creates the project and attaches them together.
+  const [pendingShots, setPendingShots] = useState<UploadedAsset[]>([])
   const isNew = values.id === 'new'
 
   const run = (fn: (id: string) => Promise<{ error?: string }>) =>
@@ -116,14 +122,32 @@ const ProjectEditor = ({
   )
 
   if (isNew) {
-    // One column on purpose: there is nothing to attach shots to until this
-    // has been saved, so the canvas and the drop zone would both be dead.
+    /* Two columns, MIRRORED from the editor below: fields left, canvas right.
+       Deliberate, and worth knowing before you "fix" it — saving redirects
+       into the editor, where the canvas is on the left, so the work visibly
+       swaps sides at that moment. That was Kai's call; the alternative was
+       matching the editor here and leaving this page's empty half on the
+       right, which is where the eye already is when you start typing.
+
+       No max-w on the form any more. The grid track sets its width now, and
+       constraining it again would leave a ragged gutter inside its own
+       column — the same note the editor's right column carries. */
     return (
       <div className="flex flex-col gap-6 pt-6">
         {header}
-        <form id={FORM_ID} action={formAction} className="flex max-w-xl flex-col gap-5">
-          <ProjectFields values={values} isNew />
-        </form>
+
+        <div className="grid gap-8 lg:grid-cols-[32rem_minmax(0,1fr)] lg:gap-10">
+          <form id={FORM_ID} action={formAction} className="flex flex-col gap-5">
+            <ProjectFields values={values} isNew />
+            {/* The shots are already uploaded as Contentful ASSETS by the time
+                this submits; what they are not yet is linked to anything. This
+                carries them into the same action that creates the project, so
+                one Save both creates it and attaches them — see saveProject. */}
+            <input type="hidden" name="pendingAssets" value={JSON.stringify(pendingShots)} />
+          </form>
+
+          <NewProjectCanvas formId={FORM_ID} assets={pendingShots} onAssetsChange={setPendingShots} />
+        </div>
       </div>
     )
   }

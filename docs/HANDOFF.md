@@ -102,6 +102,83 @@ meant editing code.
   characters, not the usual 34 — `parsePlaylistId`'s pattern is deliberately
   loose for exactly this reason. Don't "fix" it by asserting a length.
 
+### New project: canvas, drop zone and bulk import (2026-09-04)
+
+`/admin/projects/new` was one narrow column of fields with the whole right half
+of the screen empty, and no way to add images until after the first save. It is
+now two columns with a working canvas, and the drop can create either one
+project or many.
+
+- **Layout is MIRRORED from the editor on purpose** — fields left (a fixed
+  `32rem` track), canvas right. The editor is canvas-left/form-right, so the
+  work visibly swaps sides when Save redirects into it. That was Kai's explicit
+  call over the alternative (match the editor, leave the empty half on the
+  right, which is where the eye already is when you start typing). The comment
+  in `project-editor.tsx` says so, so it does not read as an oversight. Flipping
+  the editor to match is a one-line grid change if it ever grates.
+- **`hooks/use-uploader.ts`** — the concurrent upload engine, lifted out of
+  `drop-zone.tsx` because two callers now need it and disagree only about what
+  happens next: the editor attaches to a project, the new page holds. `DropTarget`
+  and `FileList` are exported from `drop-zone.tsx` for the same reason.
+- **`shots-strip.tsx` is reused unchanged.** It was already controlled and
+  presentational, so it does not care that the new page's shots have no server
+  behind them — every callback is local there where the editor's are actions.
+  `ShotCanvas` could NOT be reused: every one of its actions takes a `projectId`.
+- **The pending cover is just `shots[0]`.** `saveProject` writes
+  `coverShot: shots[0]`, so "set as cover" moves the shot to the front rather
+  than tracking a second piece of state the screen and the save could disagree
+  about.
+
+**Bulk import.** Drop N files, then choose — with the count in front of you —
+between one project with N shots and N projects with one shot each. Deciding
+after the drop rather than via a mode toggle set beforehand.
+
+- `lib/admin/bulk.ts` (pure, 14 unit tests) derives a title from each filename
+  and plans every slug **before anything is written**. This is the load-bearing
+  part: `slugExists` asks Contentful one slug at a time and therefore cannot see
+  a collision between two files in the SAME batch — neither entry exists when
+  the other is checked — so two files called `hero.png` would have produced two
+  projects both claiming `/work/hero`. `planProjects` takes the whole space's
+  slugs and the whole batch at once and suffixes from `-2`.
+- Title casing capitalises only the FIRST letter. Title-casing every word turns
+  "iPhone mock" into "IPhone Mock"; whatever case the filename carries is the
+  author's.
+- Category and Featured are inherited from the form; everything else is filled
+  in per project afterwards. All created as **drafts** — bulk import gets work
+  into the studio, not onto the site.
+- Partial failure is tolerated, never rolled back: 20 files where 3 fail leaves
+  17 projects and a named list of the 3, the same call `DropZone` makes.
+
+**`discardAssets`** was added because uploading happens on drop — it has to, the
+upload route is what validates the image — so a shot removed from the canvas
+before saving has *already* been created and published in Contentful. Removing
+it from the client array alone would leave it against the 50 GB/mo bandwidth cap
+with nothing pointing at it. Safe only because these assets are unattached by
+construction; `deleteShot` still owns the attached path and its
+`assetInUseElsewhere` check.
+
+**The remaining hole, stated rather than hidden:** upload images on the new-project
+page and then *navigate away* without saving, and those assets stay in Contentful
+unlinked. `discardAssets` covers removing a shot and Clear, not abandoning the
+page. This was observed for real during verification — 6 orphans accumulated from
+two abandoned browser runs and had to be swept manually. It is recoverable (they
+are visible in Contentful) and the asset library that would surface them is
+already on the deferred list.
+
+**Verified end to end, against Contentful rather than the screen.** Clean build;
+95 unit tests; headless Chromium driving both paths after a real login. Single
+path: 3 files → cover promoted to the third shot in the UI → Save → the created
+entry read back from Contentful with 3 shots, `coverShot === shots[0]`, and the
+`500x500` shot first, proving the UI reorder survived the save. Bulk path: a
+non-default category and Featured set on the form, 3 drafts created, each with
+one shot and a cover, all inheriting `Creatives`/`featured=true`, none published.
+Then the bulk run was **repeated against a space that already held those slugs**
+and produced `-2` suffixes with zero duplicates. All 7 projects, 9 shots and 15
+assets were then deleted; the space is back to its 30 / 104 / 104 baseline.
+
+**Not verified**: how it feels, and the failure paths (a mid-batch CMA error, a
+rate limit) were reasoned about and unit-tested but never actually triggered.
+
 ### Motion system (2026-09-04)
 
 Motion was the one design axis with no tokens — colour, radius, shadow and type
@@ -317,6 +394,9 @@ below.
   Cover promotion lives in `lib/admin/shots.ts` (`removeShot`, unit-tested) and
   the client uses the same function for its optimistic update, so the screen
   and Contentful cannot disagree about which shot takes over.
+- **New project is no longer a bare form.** See "New project: canvas, drop
+  zone and bulk import" above — it has its own two-column layout, a drop zone
+  that works before the project exists, and a bulk path.
 - **Shop tab is a deliberate stub.** The tab exists so the studio's navigation
   doesn't grow a hole later, but `shopItem` entries are still edited in
   Contentful directly. Wiring it up needs the same form, upload and publish

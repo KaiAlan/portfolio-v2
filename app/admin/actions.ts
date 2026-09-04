@@ -19,8 +19,10 @@ import {
   coverShotId,
   getRawProject,
   getSettingsEntry,
+  listProjects,
   slugExists,
 } from '@/lib/preview'
+import { planProjects } from '@/lib/admin/bulk'
 import { isValidSlug } from '@/lib/admin/slug'
 import { publishState } from '@/lib/admin/publish-state'
 import { removeShot } from '@/lib/admin/shots'
@@ -36,6 +38,39 @@ function csv(formData: FormData, key: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+/** Reads the new-project form's hidden list of already-uploaded assets.
+ *
+ *  Validated field by field rather than cast. This arrives as a string in a
+ *  form body, so it is client input in the plainest sense — and a bad
+ *  `assetId` here would be written straight into a Contentful link, producing
+ *  a shot that points at nothing. Throws on malformed input so the caller can
+ *  refuse the save instead of creating a project with junk attached. */
+function parseAssets(raw: FormDataEntryValue | null): UploadedAsset[] {
+  if (typeof raw !== 'string' || raw.trim() === '') return []
+
+  const parsed: unknown = JSON.parse(raw)
+  if (!Array.isArray(parsed)) throw new Error('Expected an array of assets.')
+
+  return parsed.map((item) => {
+    const a = item as Partial<UploadedAsset>
+    if (
+      typeof a?.assetId !== 'string' ||
+      !a.assetId ||
+      typeof a.width !== 'number' ||
+      typeof a.height !== 'number'
+    ) {
+      throw new Error('Malformed asset.')
+    }
+    return {
+      assetId: a.assetId,
+      width: a.width,
+      height: a.height,
+      url: typeof a.url === 'string' ? a.url : '',
+      name: typeof a.name === 'string' ? a.name : '',
+    }
+  })
 }
 
 /** Saves a DRAFT. It never publishes — on an already-live project the site
@@ -85,7 +120,29 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
   }
 
   if (!id || id === 'new') {
-    const created = await createEntry('project', { ...fields, published: false })
+    // Shots dropped on the new-project canvas. Their ASSETS are already in
+    // Contentful — the upload route put them there, since uploading needs no
+    // project — but nothing links them yet, and the form is the first moment
+    // there is anything to link them to.
+    let pending: UploadedAsset[]
+    try {
+      pending = parseAssets(formData.get('pendingAssets'))
+    } catch {
+      return { error: 'Something went wrong reading the dropped images. Reload and try again.' }
+    }
+
+    // Shots first, then the project that references them, so the project is
+    // never briefly live with dangling links. A failure here leaves orphaned
+    // shot entries, which cost nothing and are invisible on the site — the
+    // same trade deleteShot makes, and for the same reason: a recoverable
+    // orphan beats a project pointing at something that isn't there.
+    const shots = await createShotEntries(pending)
+
+    const created = await createEntry('project', {
+      ...fields,
+      published: false,
+      ...(shots.length > 0 ? { shots, coverShot: shots[0] } : {}),
+    })
     updateTag('projects')
     redirect(`/admin/projects/${created.sys.id}`)
   }
@@ -211,7 +268,45 @@ export async function unpublishProject(id: string): Promise<{ error?: string }> 
   return {}
 }
 
-export type UploadedAsset = { assetId: string; width: number; height: number }
+/** What the upload route hands back for one accepted file.
+ *
+ *  `url` and `name` are carried for the CLIENT's benefit, not this module's:
+ *  the new-project canvas has to preview images that are not attached to
+ *  anything yet, and bulk import titles each project from the file it came
+ *  from. Both are ignored when a shot is created — Contentful already holds
+ *  the asset and its own title by then. */
+export type UploadedAsset = {
+  assetId: string
+  width: number
+  height: number
+  url: string
+  name: string
+}
+
+/** Creates one `shot` entry per asset and returns them as links, in order.
+ *
+ *  Sequential rather than through mapWithLimit: these are cheap metadata-only
+ *  writes, and the uploads that preceded them already spent the rate-limit
+ *  budget. Shared by `addShots` (attach to an existing project), `saveProject`
+ *  (a brand-new project created with its shots already on it) and
+ *  `createProjectsFromAssets` (one shot per project), so all three build a
+ *  shot exactly the same way. */
+async function createShotEntries(assets: UploadedAsset[]) {
+  const links = []
+  for (const asset of assets) {
+    const shot = await createEntry('shot', {
+      kind: 'image',
+      // toAssetLink, not toEntryLink: `image` is an Asset link, and a
+      // mislabelled linkType is accepted by the type system and rejected by
+      // Contentful.
+      image: toAssetLink(asset.assetId),
+      width: asset.width,
+      height: asset.height,
+    })
+    links.push(toEntryLink(shot.sys.id))
+  }
+  return links
+}
 
 /** Creates one `shot` per uploaded asset and appends them to the project.
  *  If the project has no cover yet, the first shot becomes it — otherwise a
@@ -230,18 +325,7 @@ export async function addShots(
   const project = await getRawProject(projectId)
   if (!project) return { error: 'That project no longer exists.' }
 
-  const created = []
-  for (const asset of assets) {
-    const shot = await createEntry('shot', {
-      kind: 'image',
-      // toAssetLink, not toEntryLink: `image` is an Asset link, and a mislabelled
-      // linkType is accepted by the type system and rejected by Contentful.
-      image: toAssetLink(asset.assetId),
-      width: asset.width,
-      height: asset.height,
-    })
-    created.push(toEntryLink(shot.sys.id))
-  }
+  const created = await createShotEntries(assets)
 
   // project.fields comes from the CDA with include: 2, so existing shots are
   // RESOLVED ENTITIES. Narrow them back to links before writing, or the update
@@ -377,6 +461,100 @@ export async function setCover(projectId: string, shotId: string): Promise<{ err
  *  The array may be partial: applyOrder() ranks anything unlisted at the end,
  *  so a project created after the last reorder simply falls to the bottom
  *  rather than breaking the sort. */
+/** Throws away assets uploaded on the new-project canvas and then removed
+ *  before it was ever saved.
+ *
+ *  Uploading happens the moment a file is dropped, because the upload route
+ *  validates real image dimensions and that has to happen before anything is
+ *  attached. So an image removed from the canvas has ALREADY been created and
+ *  published in Contentful, and dropping it from a client array alone would
+ *  leave it sitting against the 50 GB/mo bandwidth cap with nothing pointing
+ *  at it.
+ *
+ *  Safe only because these assets are unattached by construction — nothing on
+ *  the new-project canvas has been linked to a shot yet. Never call it with an
+ *  asset that a shot already references; `deleteShot` owns that path and
+ *  checks `assetInUseElsewhere` first.
+ *
+ *  Best-effort and silent: the editor has already seen the thumbnail go, and
+ *  failing to tidy up is not something they can act on. */
+export async function discardAssets(assetIds: string[]): Promise<void> {
+  await Promise.allSettled(assetIds.map((id) => deleteAsset(id)))
+}
+
+export type BulkCreateState = { error?: string; created: number; failed: string[] }
+
+/** Creates one draft project per uploaded asset, titled from its filename.
+ *
+ *  The other half of the new-project drop zone: the same files that would
+ *  become many shots of one project become many projects of one shot each.
+ *  Which one you get is chosen after the drop, with the file count in front
+ *  of you, because that is the only moment the choice is concrete.
+ *
+ *  Three things are deliberate here:
+ *
+ *  **Every slug is planned before anything is written.** `slugExists` asks
+ *  Contentful one slug at a time, which cannot see a collision between two
+ *  files in the SAME batch — neither entry exists when the other is checked,
+ *  so dropping two files called `hero.png` would create two projects both
+ *  claiming `/work/hero`. `planProjects` takes the whole space's slugs and the
+ *  whole batch at once. See lib/admin/bulk.ts.
+ *
+ *  **Partial failure is tolerated, never rolled back.** Twenty files where
+ *  three fail should leave seventeen projects and a list of the three, not
+ *  make the editor drop everything and start again — the same call DropZone
+ *  makes about uploads. Each project is independent, so there is no
+ *  half-written state to unwind.
+ *
+ *  **Nothing is published.** These are drafts with a title, a slug, a category
+ *  and one shot; the editor still has to open each one. Bulk import is for
+ *  getting work INTO the studio, not onto the site. */
+export async function createProjectsFromAssets(
+  assets: UploadedAsset[],
+  category: string,
+  featured: boolean,
+): Promise<BulkCreateState> {
+  if (assets.length === 0) return { created: 0, failed: [] }
+  if (!CATEGORIES.includes(category)) return { error: 'Pick a category.', created: 0, failed: [] }
+
+  // One read for the whole batch. listProjects returns every project, so its
+  // slugs are the complete set to avoid — checking each one separately would
+  // be N round trips AND still miss the within-batch collisions above.
+  const existing = await listProjects()
+  const planned = planProjects(
+    assets.map((a) => a.name),
+    existing.map((p) => p.slug).filter(Boolean),
+  )
+
+  let created = 0
+  const failed: string[] = []
+
+  for (const [index, plan] of planned.entries()) {
+    try {
+      // One shot, and it is also the cover: toProject() drops any project
+      // whose coverShot will not resolve, so a project created without one
+      // would be invisible in the feed the moment it was published.
+      const shots = await createShotEntries([assets[index]])
+      await createEntry('project', {
+        title: plan.title,
+        slug: plan.slug,
+        category,
+        featured,
+        published: false,
+        shots,
+        coverShot: shots[0],
+      })
+      created += 1
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      failed.push(`${plan.filename}: ${detail}`)
+    }
+  }
+
+  if (created > 0) updateTag('projects')
+  return { created, failed }
+}
+
 export async function saveOrder(projectIds: string[]): Promise<{ error?: string }> {
   const settings = await getSettingsEntry()
   if (!settings) {

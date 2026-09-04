@@ -108,6 +108,10 @@ export async function POST(request: Request) {
       url: asset.fields.file[LOCALE].url as string,
       width: image.width as number,
       height: image.height as number,
+      // Echoed back so the client can pair the result to the file it dropped
+      // without tracking indexes across a concurrent pool. Bulk import titles
+      // each project from it; attaching to an existing project ignores it.
+      name: file.name,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Upload failed.'

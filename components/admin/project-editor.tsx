@@ -1,11 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
-import { useActionState, useState, useTransition } from 'react'
+import { useActionState, useEffect, useState, useTransition } from 'react'
 import {
-  deleteProject,
   publishProject,
   saveProject,
   unpublishProject,
@@ -19,6 +17,17 @@ import NewProjectCanvas from './new-project-canvas'
 import ProjectFields, { type ProjectFormValues } from './project-fields'
 import ShotCanvas from './shot-canvas'
 import { Button } from '@/components/ui/button'
+import { useToast } from './studio-toaster'
+import { useDeleteProject } from './delete-project-provider'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 /**
  * The whole project editor: header, shot canvas, fields.
@@ -40,11 +49,14 @@ const FORM_ID = 'project-form'
 
 /* The one non-neutral pair in the system is publish state (see --color-live in
    globals.css), and this is exactly that: Publish is the button whose effect
-   reaches the public site, so it is the one that earns the colour. Save draft
-   stays neutral because it is the safe action, and Unpublish stays a ghost
-   because it should never be the thing your eye lands on first. */
-/* Variants now, not hand-rolled class strings — but the same three roles and
-   the same reasoning. `live` exists purely for Publish. */
+   reaches the public site, so it is the one that earns the colour. Unpublish
+   stays a ghost because it should never be the thing your eye lands on first.
+
+   Save draft takes the dark `default` variant rather than the warm-grey
+   `secondary` it used to: it is the action you reach for most, and against
+   the canvas the warm grey read as disabled next to a tinted Publish. Dark is
+   still neutral — it spends no colour, which is the part of the rule that
+   matters. Kai's call. */
 
 const ProjectEditor = ({
   values,
@@ -59,17 +71,13 @@ const ProjectEditor = ({
 }) => {
   const [state, formAction, pending] = useActionState(saveProject, initial)
   const [busy, startTransition] = useTransition()
-  // publishProject returns its failures rather than throwing, so they have to
-  // be rendered or a half-finished publish looks exactly like a successful one.
-  const [publishError, setPublishError] = useState<string>()
   // Shots dropped before the project exists. Held here rather than inside the
   // canvas because the FORM needs them too — they ride along as a hidden field
   // so one Save creates the project and attaches them together.
   const [pendingShots, setPendingShots] = useState<UploadedAsset[]>([])
-  // Deleting is two clicks on purpose: the button arms a confirmation panel
+  // Deleting is two clicks on purpose: the button arms a confirmation dialog
   // rather than doing anything. Nothing here is undoable.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [deleteWarning, setDeleteWarning] = useState<string>()
   const isNew = values.id === 'new'
 
   // Delete is offered only once the project is off the site — a draft, or one
@@ -77,32 +85,43 @@ const ProjectEditor = ({
   // only decides whether the button is on screen.
   const canDelete = !isNew && isOffSite(publish)
 
-  const router = useRouter()
-  const remove = () =>
-    startTransition(async () => {
-      setPublishError(undefined)
-      setDeleteWarning(undefined)
-      const result = await deleteProject(values.id)
-      if (result.error) {
-        setPublishError(result.error)
-        setConfirmingDelete(false)
-        return
-      }
-      // A warning means it IS gone and something after that failed, so leaving
-      // the editor open on a deleted project would be the wrong thing.
-      if (result.warning) setDeleteWarning(result.warning)
-      router.push('/admin')
-    })
+  const { toast } = useToast()
 
-  const run = (fn: (id: string) => Promise<{ error?: string }>) =>
+  /* The delete is dispatched from the studio LAYOUT, not from here — see
+     DeleteProjectProvider. It runs for 15-20 seconds and this page is one you
+     can leave; owning the action here meant leaving mid-delete threw the
+     result away, so the project went but nothing ever said so. All this
+     component keeps is whether the project it is showing is the one going. */
+  const { requestDelete, deletingId } = useDeleteProject()
+  const deleting = deletingId === values.id
+
+  // Save reports through the same channel as everything else now. It used to
+  // leave a line of muted 12px text beside a button you had already looked
+  // away from, which is the reason none of this was ever noticed failing.
+  useEffect(() => {
+    if (state.error) toast(state.error, 'danger')
+    else if (state.savedAt) toast('Draft saved.')
+  }, [state, toast])
+
+  // publishProject returns its failures rather than throwing, so they have to
+  // be surfaced or a half-finished publish looks exactly like a successful one.
+  const run = (fn: (id: string) => Promise<{ error?: string }>, done: string) =>
     startTransition(async () => {
-      setPublishError(undefined)
       const result = await fn(values.id)
-      if (result.error) setPublishError(result.error)
+      if (result.error) toast(result.error, 'danger')
+      else toast(done)
     })
 
+  /* Pinned, on the same offset and with the same negative-margin trick the
+     boards' BoardHeader uses — see the note there. The editor is the one
+     studio page tall enough to scroll a long way (a canvas, a strip, and a
+     dozen fields), and it was the one page where Save and Publish scrolled
+     away with it. Nothing about the row changes; only where it sits.
+
+     `py-5` rather than the wrapper's old `pt-6`: the padding has to belong to
+     the pinned row, or it sits above it and scrolls off. */
   const header = (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="sticky top-[var(--studio-chrome-h)] z-30 -mx-4 flex flex-wrap items-center gap-3 bg-canvas px-4 py-5 sm:-mx-8 sm:px-8">
       <Link
         // /admin, not /admin/projects — the projects board is the studio's
         // index route; there is no page at /admin/projects, only /[id].
@@ -116,73 +135,106 @@ const ProjectEditor = ({
         {isNew ? 'New project' : values.title}
       </h1>
 
+      {/* No status text in the row any more — every one of these actions
+          reports as a toast now, which is both further from the button you
+          stopped looking at and closer to where your eye actually goes. */}
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        {state.error && <span className="type-meta text-muted">{state.error}</span>}
-        {state.savedAt && !state.error && <span className="type-meta text-muted">Saved.</span>}
-        {publishError && <span className="type-meta text-muted">{publishError}</span>}
-
-        <Button type="submit" form={FORM_ID} disabled={pending} variant="secondary">
+        <Button type="submit" form={FORM_ID} disabled={pending}>
           {pending ? 'Saving…' : 'Save draft'}
         </Button>
         {!isNew && (
           <Button
             type="button"
             disabled={pending || busy}
-            onClick={() => run(publishProject)}
+            onClick={() => run(publishProject, 'Published to the site.')}
             variant="live"
           >
-            {busy ? 'Publishing…' : 'Publish'}
+            Publish
           </Button>
         )}
         {!isNew && !isOffSite(publish) && (
           <Button
             type="button"
             disabled={pending || busy}
-            onClick={() => run(unpublishProject)}
+            onClick={() => run(unpublishProject, 'Taken off the site.')}
             variant="ghost"
           >
             Unpublish
           </Button>
         )}
+        {/* The only control that reflects a delete in flight. Everything else
+            stays live: you asked for it, it is running, and there is no reason
+            you cannot keep working while it does. */}
         {canDelete && (
           <Button
             type="button"
-            disabled={pending || busy}
+            disabled={pending || busy || deleting}
             onClick={() => setConfirmingDelete(true)}
             variant="danger"
           >
-            Delete
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         )}
       </div>
     </div>
   )
 
-  /* The confirmation, not a browser confirm(): it has to name what is about to
-     be destroyed, and a native dialog cannot. Same call shot-canvas makes for
-     deleting a shot, one level up — and the counts come from the shots this
-     editor already has in hand, so the number you read is the number that goes.
+  /* An actual modal dialog, not a browser confirm(): it has to name what is
+     about to be destroyed, and a native dialog cannot. Same call shot-canvas
+     makes for deleting a shot, one level up — and the counts come from the
+     shots this editor already has in hand, so the number you read is the
+     number that goes.
 
-     Danger tone is on the confirm button only. The panel itself stays neutral;
-     a red slab across the top of the editor would shout before you have
-     decided anything. */
-  const confirmPanel = confirmingDelete && (
-    <div className="flex flex-col gap-3 rounded-card border border-danger-ink/25 bg-danger/40 p-4">
-      <p className="type-body text-ink">Delete “{values.title || 'this project'}”?</p>
-      <p className="type-meta text-muted">
-        The project{shots.length > 0 && `, its ${shots.length} ${shots.length === 1 ? 'shot' : 'shots'}`}
-        {shots.length > 0 && ' and their images'} will be removed from Contentful for good. There is
-        no undo.
-      </p>
-      <div className="flex items-center gap-3">
-        <Button type="button" variant="danger" disabled={busy} onClick={remove}>
-          {busy ? 'Deleting…' : 'Delete permanently'}
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => setConfirmingDelete(false)}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+     Radix's ALERT dialog specifically — see components/ui/alert-dialog.tsx —
+     so a misclick on the editor behind it can never dismiss it; only Cancel,
+     Escape, or the delete itself can.
+
+     Controlled, not left to the trigger, because confirming has to close it
+     immediately — see below. */
+  const confirmDialog = (
+    <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete “{values.title || 'this project'}”?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The project
+            {shots.length > 0 && `, its ${shots.length} ${shots.length === 1 ? 'shot' : 'shots'}`}
+            {shots.length > 0 && ' and their images'} will be removed from Contentful for good.
+            There is no undo.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <AlertDialogFooter>
+          {/* Confirming closes the dialog on the spot and lets the delete run
+              behind you — a Contentful round trip over several shots takes
+              seconds, and a modal is the wrong place to spend them. The
+              outcome arrives as a toast either way: the success case redirects
+              to the board and toasts there, a failure toasts here.
+
+              The action it fires lives in the layout, so neither closing this
+              dialog nor leaving the page can cut the delete's report short.
+
+              Danger tone on the confirming action only, the same reasoning the
+              old inline panel carried: nothing here should read as the default
+              choice. */}
+          <Button
+            type="button"
+            variant="danger"
+            onClick={() => {
+              setConfirmingDelete(false)
+              requestDelete(values.id)
+            }}
+          >
+            Delete permanently
+          </Button>
+          <AlertDialogCancel asChild>
+            <Button type="button" variant="ghost">
+              Cancel
+            </Button>
+          </AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 
   if (isNew) {
@@ -197,7 +249,7 @@ const ProjectEditor = ({
        constraining it again would leave a ragged gutter inside its own
        column — the same note the editor's right column carries. */
     return (
-      <div className="flex flex-col gap-6 pt-6">
+      <div className="flex flex-col gap-6">
         {header}
 
         <div className="grid gap-8 lg:grid-cols-[32rem_minmax(0,1fr)] lg:gap-10">
@@ -218,12 +270,13 @@ const ProjectEditor = ({
 
   return (
     /* `main` deliberately has no top padding — the boards' pinned headers
-       supply their own. This page has no pinned header, so it supplies it
-       here; without it the title sits flush against the panel's nav rule. */
-    <div className="flex flex-col gap-6 pt-6">
+       supply their own, and this page's header is now one of them, so its
+       `py-5` is the padding. Putting it back on the wrapper would place it
+       ABOVE the pinned row, where it scrolls away and lets the title ride up
+       against the panel's nav rule. */
+    <div className="flex flex-col gap-6">
       {header}
-      {confirmPanel}
-      {deleteWarning && <p className="type-meta text-muted">{deleteWarning}</p>}
+      {confirmDialog}
 
       {/* The work on the left, the controls on the right. A fixed right track
           rather than a fraction: the form's inputs stop being readable much

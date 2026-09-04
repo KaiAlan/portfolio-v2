@@ -18,6 +18,11 @@ if (!CONTENTFUL_SPACE_ID || !CONTENTFUL_MANAGEMENT_TOKEN) {
 
 const CATEGORIES = ['Product design', 'Graphics & Socials', 'Creatives', 'Framer']
 const META_ROWS = ['year', 'category', 'type', 'tools', 'client', 'links']
+// Mirrors FEED_MODES / FEED_COLUMN_CHOICES in lib/types.ts. Duplicated for
+// the same reason CATEGORIES and META_ROWS are: this is a plain .mjs script
+// and cannot import the TypeScript source. Keep the two in step.
+const FEED_MODES = ['masonry', 'grid', 'index']
+const FEED_COLUMN_CHOICES = [2, 3, 4, 5, 6]
 
 const sym = (id, name, extra = {}) => ({ id, name, type: 'Symbol', ...extra })
 const text = (id, name, extra = {}) => ({ id, name, type: 'Text', ...extra })
@@ -116,6 +121,15 @@ const TYPES = [
       symList('visibleMetaRows', 'Visible metadata rows', [{ in: META_ROWS }]),
       // The nav music player's source. Empty = the player does not render.
       sym('youtubePlaylistId', 'YouTube playlist ID'),
+      // What a first-time visitor sees. Either unset falls back in
+      // lib/contentful.ts (masonry / 3), so an entry predating these fields
+      // renders exactly as it did before.
+      sym('defaultFeedView', 'Default feed view', {
+        validations: [{ in: FEED_MODES }],
+      }),
+      int('defaultFeedColumns', 'Default grid columns', {
+        validations: [{ in: FEED_COLUMN_CHOICES }],
+      }),
     ],
   },
 ]

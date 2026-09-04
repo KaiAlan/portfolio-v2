@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import Navbar from '@/components/navbar/navbar'
-import { logout } from '../login/actions'
+import StudioIsland from '@/components/admin/studio-island'
+import StudioToaster from '@/components/admin/studio-toaster'
+import DeleteProjectProvider from '@/components/admin/delete-project-provider'
 
 /** The studio reads through the Preview API, uncached and on purpose —
  *  editing against stale data is editing against a lie (lib/preview.ts). So
@@ -25,32 +27,30 @@ export const metadata: Metadata = {
 }
 
 /**
- * The studio shell: a dark frame with the site held inside it as a light
- * panel.
+ * The studio shell: the site itself, with one island of chrome over it.
  *
- * The framing is the whole idea. The panel carries the *real* site header —
- * the same `Navbar` the public routes render, not a copy — so the thing being
- * edited is visibly the thing that ships, and the dark surround is the only
- * part of the screen that is "admin". It also means the header can never drift
- * from the site's: there is one component.
+ * The panel carries the *real* site header — the same `Navbar` the public
+ * routes render, not a copy — so the thing being edited is visibly the thing
+ * that ships. It also means the header can never drift from the site's:
+ * there is one component.
+ *
+ * There used to be a dark frame around all of this, and a 40px dark toolbar
+ * above it, and between them they were most of what the screen spent its
+ * space on. Both are gone (2026-09-04). What says "admin" now is
+ * `StudioIsland` alone — fixed, so it costs no layout height — and the
+ * studio is otherwise the site at full size.
  *
  * The panel IS the scroll container, and that one fact is what makes the rest
- * work. The frame is exactly one viewport tall (`h-dvh`), the toolbar is a
- * fixed 40px of it, and the panel takes the remainder and scrolls internally.
+ * work. It is exactly one viewport tall (`h-dvh`) and scrolls internally
+ * rather than letting the document scroll.
  *
- * Two things fall out of that, both of which were broken when the document
- * scrolled instead:
- *
- *   - The panel's rounded top never scrolls away, because the panel's own box
- *     does not move. Previously the radius scrolled off-screen and the square
- *     sticky header underneath became the visible top edge, which read as the
- *     corner snapping square. Rounding the header instead cannot fix it: the
- *     panel paints the same canvas directly behind those corners, so the
- *     notches fill with canvas rather than showing the dark frame.
- *   - Sticky offsets inside are measured from the panel, not the viewport, so
- *     the header pins at `top-0` and --studio-chrome-h is the header's own
- *     height with nothing else added. While the document scrolled, that token
- *     was 40px short of the truth and every board header overlapped the nav.
+ * Keep it that way. Sticky offsets inside are measured from the panel, not
+ * the viewport, so the header pins at `top-0` and --studio-chrome-h is the
+ * header's own height with nothing else added. While the document scrolled,
+ * that token was 40px short of the truth and every board header overlapped
+ * the nav. (The panel's rounded top used to depend on this too — that radius
+ * is gone along with the dark frame that gave it something to be rounded
+ * against.)
  *
  * `min-h-0` is load-bearing next to `flex-1`: a flex child's default
  * `min-height:auto` refuses to shrink below its content, so the panel would
@@ -64,39 +64,36 @@ export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   if (!session.isLoggedIn) redirect('/admin/login')
 
   return (
-    <div className="flex h-dvh flex-col bg-surface-dark px-3 pb-3 sm:px-5 sm:pb-5">
-      {/* The frame's own toolbar. Flush with the panel's edges and no taller
-          than it needs to be — it is a title bar for the window below it, so
-          floating it in a deep dark band would read as a second header rather
-          than as chrome belonging to the panel. */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-4 bg-surface-dark px-1">
-        <span className="type-meta font-medium tracking-tight text-on-dark/70">
-          Admin
-        </span>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="type-meta rounded-pill px-2.5 py-1 text-on-dark/50 transition-colors hover:bg-on-dark/10 hover:text-on-dark"
+    /* The toaster wraps the frame rather than sitting inside the panel: its
+       viewport is fixed to the viewport, and every studio route shares the one
+       queue — including a message handed across a navigation, which is how the
+       editor's delete reports back from the board it lands on. */
+    <StudioToaster>
+      {/* Inside the toaster because it reports through it, and OUTSIDE the
+          panel because a delete has to outlive the editor page that started
+          it — see the note in the provider. */}
+      <DeleteProjectProvider>
+        <div className="flex h-dvh flex-col bg-canvas">
+          {/* The studio's only chrome. Fixed rather than in the flow, so the
+              panel below runs the full height of the viewport. */}
+          <StudioIsland />
+
+          <div
+            data-studio-scroll
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-canvas"
           >
-            Log out
-          </button>
-        </form>
-      </div>
+            {/* Opaque: it is what the board scrolls underneath. The corners are
+                the panel's to draw, not this element's. */}
+            <div className="sticky top-0 z-40 border-b border-hairline bg-canvas">
+              <Navbar sticky={false} />
+            </div>
 
-      <div
-        data-studio-scroll
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-panel bg-canvas"
-      >
-        {/* Opaque: it is what the board scrolls underneath. The corners are
-            the panel's to draw, not this element's. */}
-        <div className="sticky top-0 z-40 border-b border-hairline bg-canvas">
-          <Navbar sticky={false} />
+            {/* No top padding: each board's own pinned header supplies it, and
+                padding here would sit above the sticky row and scroll away. */}
+            <main className="flex-1 px-4 pb-8 sm:px-8">{children}</main>
+          </div>
         </div>
-
-        {/* No top padding: each board's own pinned header supplies it, and
-            padding here would sit above the sticky row and scroll away. */}
-        <main className="flex-1 px-4 pb-8 sm:px-8">{children}</main>
-      </div>
-    </div>
+      </DeleteProjectProvider>
+    </StudioToaster>
   )
 }

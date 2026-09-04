@@ -4,7 +4,7 @@ Written for a session starting cold. Read `PLAN.md` for the full executable
 plan and `CONTEXT.md` for why each decision was made; this file is the
 current state and what to do next.
 
-**Last updated:** 2026-09-04 (motion system)
+**Last updated:** 2026-09-04 (feed views, Settings board, studio island)
 **Repo:** https://github.com/KaiAlan/portfolio-v2 (public, MIT)
 **Local:** `/home/kaialan/portfolio-v2` (WSL2; moved off `C:\home\claude-projects\portfolio` on 2026-09-03)
 
@@ -427,6 +427,133 @@ clickable — and it follows from Next keeping the modal slot mounted from its
 client cache, which `lightbox.tsx` already documents. It is an accessibility
 smell rather than a motion one, and it wants its own look.
 
+### The feed's three views (2026-09-04)
+
+The feed was masonry-only. It now has three, chosen from one popover at the
+top-right of the category row (`components/ui/layout-picker.tsx` — shared
+with both studio boards, see the Boards entry under P3).
+
+- **Masonry** — unchanged. `MasonryLayout` still packs shortest-column from
+  known aspect ratios, still picks its own column count from container width.
+- **Grid** (`components/feed/grid-layout.tsx`) — uniform 4:3 cells at a
+  user-chosen 2–6 columns, laid out by CSS grid through `.feed-grid` /
+  `--feed-cols` in `globals.css`. That is a custom property rather than a
+  Tailwind class for the same reason `.board-grid` is: a runtime column count
+  has nothing to generate a utility from at build time.
+
+  Each shot sits **contained** inside its cell at its own true ratio with
+  40px of padding, so the card's ground shows around it. The contained box is
+  `containedWidthFraction` in `lib/feed-layout.ts` (tested) — closed-form
+  from two known ratios, not measured, because that box is also the
+  `layoutId` morph source and the lightbox's end is the shot's own ratio. A
+  morph between two different ratios stretches the media for its duration.
+
+  Known approximation, commented at the call site: the fraction is computed
+  against the *unpadded* cell, so subtracting a fixed 40px from both axes
+  skews the 4:3 by a few percent. Imperceptible at real cell sizes; fixing it
+  exactly would mean measuring every cell.
+- **Index** (`components/feed/index-layout.tsx`) — the editorial list.
+  `/001 — Title — Category — Year — ↗` per row, inverting to `bg-ink` on
+  hover, with the cover floating in beside the cursor. It is the one view
+  that shows year and category, being the one not competing with a picture
+  for the space. Category and year drop out below `sm` rather than wrapping:
+  a row that becomes two lines stops being a row.
+
+  Its preview is sized in JS and clamped to the viewport — see the index-view
+  bullet under Boards, which documents why.
+
+**The bug worth remembering here**: the preview began as ONE element kept
+mounted while its `layoutId` swapped from project to project as the cursor
+moved down the list. Motion reads that as a shared-layout transition *from
+the previous shot's box*, so each cover scaled out of its frame mid-move and
+read as clipped. Keying the inner node on the project id fixes it — each
+cover is its own element, and `layoutId` is left to do only the lightbox
+morph. Same class of mistake as the radius-through-a-morph trap.
+
+**Card chrome, both card views:**
+- A **shot-count badge**, top-right, only when a project has more than one
+  shot — a single-shot project has nothing to count and the badge would be
+  noise. On `--color-surface-sunken`.
+- The hover title is a **flat white tag** (bottom-left, `rounded-card`, no
+  shadow), not the old dark gradient wash. It has to sit on light and dark
+  imagery alike, and a gradient washes out on an already-dark shot.
+
+**Token changes, all in `globals.css`:**
+
+| Token | Change | Why |
+|---|---|---|
+| `--color-on-dark` | `#ffffff` → `#fafafa` | Kai's button contract: dark buttons are `#1f1f1f` and never pair with pure white. One token change covers every dark button in the app. |
+| `--color-surface-sunken` | new, `#f0f0f0` | Ground for a small marker sitting ON a card — the count badge. Never for a card itself. |
+| `.type-caption` | new, 12px | Slots under `type-meta` (13px). Badge, hover tag, index row meta. |
+| `.feed-grid` | new | Grid mode's column template, per above. |
+| Feed card ground | `surface-warm` → `surface-alt` (`#f5f5f5`) | The card colour Kai specified. `Skeleton` moved with it — its whole point is being the card's own grey. |
+
+**Buttons floor at 32px** — the category pills and the layout picker's rows
+carry `min-h-8`, since `type-button`'s line height alone landed a hair under.
+
+### Settings board, and the studio down to one island (2026-09-04)
+
+**`/admin/music` → `/admin/settings`.** Music was never really its own
+section, it was the only setting that existed. A second one made "Music" the
+wrong *name* for the tab rather than the wrong place for the field, so the
+board was renamed and both now live on it, each saving independently and
+explicitly (writing `siteSettings` republishes and waits for delivery — not
+something to fire on a keystroke). No redirect stub: it is an authed URL with
+no inbound links.
+
+**The feed's default view is now editable** (`DefaultViewField` →
+`saveFeedDefaults`, appended to `app/admin/actions.ts` and modelled exactly
+on `savePlaylist`). Two new `siteSettings` fields, `defaultFeedView` and
+`defaultFeedColumns`, both with `in` validations.
+
+> **Run `npm run setup:contentful` once** to create them. Until then both
+> fall back to masonry/3 (`FEED_FALLBACK`) rather than erroring — an entry
+> predating the fields simply has neither.
+
+Precedence: the admin default is what a first-time visitor sees; once someone
+touches the feed's own picker, their `localStorage` choice wins in that
+browser. The default is read on the **server** (`getSiteSettings`, cached and
+tagged, so `/` stays fully prerendered) and passed into `Feed`, so it is in
+the static HTML — no flash of the wrong view before hydration.
+
+`useFeedLayout` therefore takes its defaults as an argument, which means its
+`getSnapshot`/`getServerSnapshot` close over them and **must** stay
+memoised — an inline arrow would re-read (and can re-subscribe) every render.
+`Feed` memoises the object on its two primitive fields for the same reason.
+
+**The studio's chrome is now one island.** It lost, in that order: the
+full-width 40px dark toolbar that held a title and a log-out button at
+opposite ends of the screen, and then the dark frame that surrounded the
+whole panel. Two words of chrome did not need a band of the viewport, and the
+frame around it did not need the rest. What remains is
+`components/admin/studio-island.tsx` — a dark shape hanging from the top
+edge, flush at the top with only its bottom corners rounded, and the only
+element on screen allowed to be dark now that it is the only thing saying
+"admin".
+
+- **Collapsible.** At rest it is just `Admin ⌄`. Actions appear on hover, and
+  a click *pins* it open — a hover-only reveal is a target that moves away
+  from you on the way to the button. Escape or an outside click unpins.
+- `layout` on the shape, `layout="position"` on the label, `spring.chrome`.
+  Motion animates size by scaling, so a text node in a growing box smears
+  without the second one; the third is the documented docking preset.
+- **`fixed`, not `absolute`.** The panel is itself the scroll container, so an
+  absolutely positioned island would scroll away with the boards.
+- It briefly carried concave fillets to melt into the dark frame's top edge.
+  Those came out with the frame — with no dark material either side they are
+  two smudges on white.
+
+**`--studio-hero-h` is now `calc(100dvh - 320px)`, from 380px.** That token
+itemises every pixel above the project editor's hero, and two entries left
+the sum: the 40px toolbar (replaced by a fixed island, which costs no layout
+height) and the frame's 20px top and bottom padding. The breakdown comment in
+`globals.css` was rewritten to match — it is the kind of arithmetic that goes
+stale silently.
+
+The `(studio)` layout's own doc comment was also rewritten. It opened with "a
+dark frame with the site held inside it as a light panel… the framing is the
+whole idea", which is no longer true of anything.
+
 ### P3 — The studio (v1, localhost-only)
 Built against `docs/superpowers/plans/2026-09-03-admin-studio.md`, all 14
 tasks complete. **Not deployed and not deployable as-is** — see the warning
@@ -473,11 +600,56 @@ below.
   the same sequence the site will render, not newest-first.
 - **Cache invalidation**: every mutation calls `updateTag`, never bare
   `revalidateTag` (deprecated without a profile in this Next version).
-- **Boards**: Projects and Order share one `ProjectCard` and `ProjectGrid`, so
-  they cannot drift into two slightly different cards, and a `ColumnPicker`
-  (1–8, stored) that both read. Both apply `applyOrder`, so the studio shows
-  the sequence the feed serves rather than newest-first; drafts aren't in
-  `projectOrder`, so they rank last.
+- **Boards**: Projects and Order share one `ProjectCard`, one `ProjectRow`
+  and one `BoardView`, so they cannot drift into two slightly different
+  boards. Both apply `applyOrder`, so the studio shows the sequence the feed
+  serves rather than newest-first; drafts aren't in `projectOrder`, so they
+  rank last.
+- **One layout picker, three surfaces** (`components/ui/layout-picker.tsx`):
+  masonry / grid / index, plus the grid's column count. The feed and both
+  studio boards render the same control — it replaced the studio's
+  numbers-only `ColumnPicker`, which had already drifted from the feed's
+  version of the same popover. What differs is passed in: the studio offers
+  1–8 columns on a `--control` ground, the feed 2–6 on the page canvas.
+  Column count is grid-only (masonry picks its own tiers from container
+  width, index is one column), so the number row greys out rather than
+  hiding — hiding it made the popover resize as the mode was pressed.
+  - State: `hooks/use-board-layout.ts` for the studio (`studio:board-layout`,
+    one setting across both boards) and `hooks/use-feed-layout.ts` for the
+    site. Separate stores because the feed's defaults come from the Settings
+    board on the server and the studio's are constant. Both are
+    `useSyncExternalStore` over localStorage, never an effect.
+  - The studio's masonry reuses the site's `MasonryLayout` unchanged — it is
+    pure geometry over id + aspect, so the board packs columns exactly the
+    way the feed does. That needed `AdminProject.coverAspect`, read off the
+    same resolved cover entry as `coverUrl` (`lib/preview.ts`); a cover with
+    no dimensions falls back to 4:3 rather than being dropped.
+  - A masonry tile carries its title and status pill ON the cover, not under
+    it: a meta row below would have to be packed for too. Grid keeps the
+    contained 4:3 tile with the meta row.
+  - **The index view's hover preview is sized in JS**, not CSS
+    (`previewSize` / `previewPlacement` in `lib/feed-layout.ts`, tested).
+    Measured in a real browser over CDP, not reasoned about — the cascade
+    theory that prompted the rewrite turned out to be wrong. Two real
+    reasons:
+    1. A CSS width cap cannot take the height down with it. `h-[360px]` +
+       `aspect-ratio` + `max-w-[38vw]` sized ordinary shots correctly, but a
+       3:1 panorama wants 1560px against a 608px cap, and the box then stops
+       being the shot's ratio — `object-cover` crops it hard. Pixels now.
+    2. The box follows the cursor and is centred on it, so on the first rows
+       it ran off the top of the window (measured at y = -47 on a 900px
+       viewport) and the cover was cut. `previewPlacement` clamps it half a
+       box off each edge, and flips it to the cursor's left rather than
+       overflowing right.
+    Sizes: 520 / 620 / 720px tall by viewport tier, capped at 0.78vh and
+    0.44vw. Roughly 35% bigger than before — it now covers the meta columns
+    of the rows beside it, which is the accepted cost of the size.
+  - **The Order board's drop caret is axis-aware** and this is the easy thing
+    to get backwards: tiles flow left-to-right so the gap is vertical and the
+    pointer's *horizontal* half decides the side; index rows stack, so both
+    flip. Read the wrong axis and the caret marks a gap the drop won't use.
+    Index is the mode actually worth reordering in — a gap between two rows
+    is unambiguous where the side of a tile has to be inferred.
 - **Drag auto-scroll** (`hooks/use-drag-autoscroll.ts`): native HTML5 drag does
   not reliably auto-scroll a nested scroll container, so cards could only be
   moved among rows already on screen. Used by the order board and the shots
@@ -559,7 +731,9 @@ below.
   doesn't grow a hole later, but `shopItem` entries are still edited in
   Contentful directly. Wiring it up needs the same form, upload and publish
   walk projects got — that is its own task, not a restyle.
-- **Music tab**: the `youtubePlaylistId` field. See the player under P1.
+- **Settings tab** (`/admin/settings`, was the Music tab): the
+  `youtubePlaylistId` field — see the player under P1 — plus the feed's
+  default view and column count. See "Settings board" above.
 
 **Verified for real, not by inspection** — a disposable `test-e2e-verify`
 project was created, given 4 real uploaded images, published, and deleted;
@@ -828,6 +1002,10 @@ goes in at P2. It deliberately leaves `siteSettings` alone.
 The site and studio are built. What stands between here and launch is
 mostly not code.
 
+0. **`npm run setup:contentful`** — one run, to create `defaultFeedView` and
+   `defaultFeedColumns` on `siteSettings`. The Settings board writes them
+   already; until the fields exist the feed just falls back to masonry/3.
+   Idempotent, so re-running is safe.
 1. **Real work into Contentful.** All 30 projects are fixtures. The studio
    exists precisely so this no longer means editing code — enter ~15 real
    projects through it. As of 2026-09-04 it can add, reorder, cover, publish

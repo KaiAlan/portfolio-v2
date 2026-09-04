@@ -32,6 +32,10 @@ export type AdminProject = {
    *  the entry is published in Contentful. */
   published: boolean
   coverUrl?: string
+  /** width / height of the cover shot. Undefined when there is no cover, or
+   *  when it is missing dimensions — the masonry board falls back to the
+   *  grid's 4:3 rather than collapsing the column. */
+  coverAspect?: number
   updatedAt: string
 }
 
@@ -49,10 +53,30 @@ function previewClient() {
   }).withoutUnresolvableLinks
 }
 
-function coverUrlOf(fields: Record<string, unknown>): string | undefined {
-  const cover = fields.coverShot as { fields?: { image?: { fields?: { file?: { url?: string } } } } } | undefined
+type CoverFields = {
+  fields?: {
+    width?: number
+    height?: number
+    image?: { fields?: { file?: { url?: string } } }
+  }
+}
+
+/** Both facts about the cover come off the same resolved shot entry, so they
+ *  are read together — the boards need the URL, and the masonry mode needs
+ *  the ratio to pack columns before an image byte arrives (same no-CLS
+ *  reasoning as the public feed's mapper). */
+function coverOf(fields: Record<string, unknown>): {
+  coverUrl?: string
+  coverAspect?: number
+} {
+  const cover = fields.coverShot as CoverFields | undefined
   const rawUrl = cover?.fields?.image?.fields?.file?.url
-  return rawUrl ? imageUrl(rawUrl, 400) : undefined
+  const width = cover?.fields?.width
+  const height = cover?.fields?.height
+  return {
+    coverUrl: rawUrl ? imageUrl(rawUrl, 400) : undefined,
+    coverAspect: width && height ? width / height : undefined,
+  }
 }
 
 export async function listProjects(): Promise<AdminProject[]> {
@@ -77,7 +101,7 @@ export async function listProjects(): Promise<AdminProject[]> {
         : [],
       published: e.fields.published === true,
       state: visibleState(e.sys, e.fields.published === true),
-      coverUrl: coverUrlOf(e.fields),
+      ...coverOf(e.fields),
       updatedAt: e.sys.updatedAt,
     }
   })
@@ -124,7 +148,7 @@ export type AdminShot = {
  *
  *  Both URLs go through imageUrl so they resolve at the lib/media.ts
  *  chokepoint rather than as full-resolution originals — the same reason
- *  coverUrlOf does it above. Two sizes, not one: the strip would waste
+ *  coverOf does it above. Two sizes, not one: the strip would waste
  *  bandwidth on a canvas-sized image and the canvas would look soft on a
  *  thumbnail-sized one. */
 export function shotsOf(entry: RawEntry): AdminShot[] {

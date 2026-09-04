@@ -28,6 +28,7 @@ import { publishState } from '@/lib/admin/publish-state'
 import { removeShot } from '@/lib/admin/shots'
 import { parsePlaylistId } from '@/lib/music/playlist'
 import { isRateLimited, mapWithLimit, retry } from '@/lib/admin/pool'
+import { isFeedColumnChoice, isFeedMode } from '@/lib/types'
 
 export type SaveState = { error?: string; savedAt?: number; id?: string }
 
@@ -552,7 +553,13 @@ export async function deleteShot(projectId: string, shotId: string): Promise<Del
   return warning ? { warning } : {}
 }
 
-export type DeleteProjectState = { error?: string; warning?: string }
+export type DeleteProjectState = {
+  error?: string
+  warning?: string
+  /** The title of what was destroyed, for the message afterwards. Read before
+   *  the entry goes, because after that there is nothing left to ask. */
+  deletedTitle?: string
+}
 
 /** Destroys a project, its shots, and the images under them.
  *
@@ -581,7 +588,24 @@ export type DeleteProjectState = { error?: string; warning?: string }
  *  No republish is needed, unlike deleteShot's cover case. A project that is
  *  off the site is not in `getProjects()` at all, so nothing the public
  *  renders can be pointing at it. */
+/** Reports its outcome by RETURNING it, and deliberately does not invalidate
+ *  or redirect. Both of those were tried and both broke the reporting:
+ *
+ *    - `invalidate()` here makes Next refresh the route the action was called
+ *      from as part of this action's own response. That route is the deleted
+ *      project's editor, which `notFound()`s the instant its entry is gone, so
+ *      the response came back carrying a 404 for the page that issued it.
+ *    - `redirect()` avoided that, but a redirect is a navigation, and it loses
+ *      every race against one the user starts. Hit Back while the delete is
+ *      running — it takes 15-20 seconds — and the redirect never lands, so the
+ *      project went and nothing ever said so.
+ *
+ *  So the caller owns both jobs now: DeleteProjectProvider toasts the result
+ *  and calls `revalidateProjects()` itself, from the studio layout, which
+ *  outlives any page the user leaves. */
 export async function deleteProject(id: string): Promise<DeleteProjectState> {
+  if (!id) return { error: 'That project no longer exists.' }
+
   const project = await getRawProject(id)
   if (!project) return { error: 'That project no longer exists.' }
 
@@ -590,6 +614,11 @@ export async function deleteProject(id: string): Promise<DeleteProjectState> {
   }
 
   const shotIds = linkIds(project.fields.shots)
+
+  // Read for the toast the board shows afterwards, and read HERE for the same
+  // reason the assets below are: in a moment there will be no entry left to
+  // ask what it was called.
+  const title = typeof project.fields.title === 'string' ? project.fields.title : 'The project'
 
   // Collect the assets BEFORE the shots are destroyed — once a shot entry is
   // gone there is nothing left to say which image belonged to it.
@@ -643,8 +672,16 @@ export async function deleteProject(id: string): Promise<DeleteProjectState> {
     warning = `The project was deleted, but ${failures.length} of its ${shotIds.length} shots could not be cleaned out of Contentful. First error: ${failures[0]}`
   }
 
+  return warning ? { deletedTitle: title, warning } : { deletedTitle: title }
+}
+
+/** The invalidation `deleteProject` deliberately skips — see the note there.
+ *
+ *  Split out so it runs AFTER the caller has left the deleted project's page,
+ *  rather than triggering a refresh of that page while it is still on screen
+ *  and has nothing left to render. */
+export async function revalidateProjects(): Promise<void> {
   invalidate('projects')
-  return warning ? { warning } : {}
 }
 
 /** `coverShot` is its own reference field, so choosing a cover never reorders
@@ -823,6 +860,54 @@ export async function savePlaylist(input: string): Promise<{ error?: string }> {
   const publishedSettings = await publishEntry(settings.sys.id)
   await awaitDelivery(settings.sys.id, publishedSettings.sys.updatedAt)
 
+  invalidate('settings')
+  return {}
+}
+
+/** The feed's starting layout — what a visitor with no stored preference
+ *  sees. Both halves save together because they are one decision: picking
+ *  "grid" without saying how many columns is half an answer.
+ *
+ *  The column count is stored even when the view is masonry or index, which
+ *  neither uses. That is deliberate: switching the default to grid later
+ *  should not also silently reset the number, and a value nothing currently
+ *  reads is cheaper than a value that has to be re-chosen.
+ *
+ *  Modelled on savePlaylist above — same optimistic lock, same publish,
+ *  same wait-then-invalidate ordering, and the same reason for it. */
+export async function saveFeedDefaults(
+  mode: string,
+  columns: number,
+): Promise<{ error?: string }> {
+  if (!isFeedMode(mode) || !isFeedColumnChoice(columns)) {
+    return { error: 'That is not a layout the feed offers.' }
+  }
+
+  const settings = await getSettingsEntry()
+  if (!settings) {
+    return { error: 'No siteSettings entry exists. Run npm run setup:contentful.' }
+  }
+
+  try {
+    await updateEntry(
+      settings.sys.id,
+      { defaultFeedView: mode, defaultFeedColumns: columns },
+      settings.sys.updatedAt,
+    )
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      return { error: 'Settings changed elsewhere. Reload before saving.' }
+    }
+    throw error
+  }
+
+  const publishedSettings = await publishEntry(settings.sys.id)
+  await awaitDelivery(settings.sys.id, publishedSettings.sys.updatedAt)
+
+  // 'settings' alone is enough: PATHS_FOR_TAG already maps that tag to `/`,
+  // which is the one route reading these, and getProjects is tagged with
+  // settings as well. Adding 'projects' here would revalidate the detail
+  // pages and the sitemap for a change that cannot affect either.
   invalidate('settings')
   return {}
 }

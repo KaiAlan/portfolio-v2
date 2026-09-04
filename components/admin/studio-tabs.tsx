@@ -17,7 +17,7 @@ const TABS = [
   { href: '/admin', label: 'Projects', exact: true },
   { href: '/admin/order', label: 'Order', exact: false },
   { href: '/admin/shop', label: 'Shop', exact: false },
-  { href: '/admin/music', label: 'Music', exact: false },
+  { href: '/admin/settings', label: 'Settings', exact: false },
 ] as const
 
 /**

@@ -10,7 +10,10 @@ import 'server-only'
 import { createClient } from 'contentful'
 import { cacheLife, cacheTag } from 'next/cache'
 import {
+  FEED_FALLBACK,
   META_ROWS,
+  isFeedColumnChoice,
+  isFeedMode,
   type MetaRow,
   type Project,
   type ProjectLink,
@@ -177,6 +180,15 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       (META_ROWS as readonly string[]).includes(r),
     ),
     youtubePlaylistId: str(fields.youtubePlaylistId) ?? '',
+    // Both fall back rather than validating loudly: an entry created before
+    // these fields existed simply has neither, and the site should render
+    // the way it always did rather than fail on a missing setting.
+    feedDefaults: {
+      mode: isFeedMode(fields.defaultFeedView) ? fields.defaultFeedView : FEED_FALLBACK.mode,
+      columns: isFeedColumnChoice(fields.defaultFeedColumns)
+        ? (fields.defaultFeedColumns as number)
+        : FEED_FALLBACK.columns,
+    },
   }
 }
 

@@ -19,7 +19,9 @@
   --color-ink-soft: #1d1717;
   --color-muted: #383838;
   --color-muted-soft: #414141;
-  --color-on-dark: #ffffff;
+  /* #fafafa, not pure white — every dark button (bg-ink) pairs its text/icon
+     with this, so a #1f1f1f fill never sits next to a #ffffff glyph. */
+  --color-on-dark: #fafafa;
 
   /* Surfaces. The canvas was a warm off-white (#f7f5f3) through P1 — see
      COSMOS-DESIGN.md decision #8. Kai moved it to pure white on 2026-09-03
@@ -30,6 +32,10 @@
   --color-surface-alt: #f5f5f5;
   --color-surface-warm: #e8e6e4;
   --color-surface-dark: #191919;
+  /* One step under a card (--color-surface-alt) — the ground for a small
+     marker that sits ON a card, e.g. the feed's shot-count badge. Never used
+     for a card itself; if it needs to hold content, it wants surface-alt. */
+  --color-surface-sunken: #f0f0f0;
 
   /* The ground for a *grouped* control — the segmented studio tabs, the
      now-playing widget. One step darker than surface-alt on purpose: those
@@ -225,11 +231,9 @@
      twenty shots gets as many rows as it needs and the panel scrolls — so this
      bounds the hero only, never the column.
 
-     Unlike --studio-chrome-h this DOES count the dark toolbar, because it is
-     measured against the viewport rather than against the panel's scroll box.
-     What is subtracted, top to bottom:
-        20px  frame padding-bottom (sm:pb-5)
-        40px  dark toolbar (h-10)
+     Measured against the VIEWPORT, not the panel's scroll box — which is why
+     it counts chrome the panel does not itself contain. What is subtracted,
+     top to bottom:
         73px  panel header (--studio-chrome-h)
         24px  the editor's own top padding (pt-6)
         36px  the editor's title row (the back button's size-9)
@@ -243,8 +247,13 @@
      Applied at EVERY width, with a min-height under it. The hero used an
      aspect ratio below `lg`, which made it as tall as the column was wide —
      so a narrow window, or merely browser zoom (which shrinks the CSS
-     viewport), pushed it off the screen. A height cannot do that. */
-  --studio-hero-h: calc(100dvh - 380px);
+     viewport), pushed it off the screen. A height cannot do that.
+
+     Was 380px until 2026-09-04. Two things left the sum that day: the 40px
+     dark toolbar, replaced by StudioIsland (fixed, so it costs no layout
+     height), and the dark frame's 20px top and bottom padding, removed with
+     the frame itself. Nothing above the panel takes space now. */
+  --studio-hero-h: calc(100dvh - 320px);
 }
 
 body {
@@ -351,6 +360,110 @@ input[type='number']::-webkit-inner-spin-button {
   animation: select-out var(--dur-base-out) var(--ease-exit) forwards;
 }
 
+/* The confirm dialog's open/close.
+
+   Same approach as the Select above and for the same reason — no
+   tw-animate-css in this project — but with one difference worth knowing
+   before you "fix" it: the content animates the independent `scale` property,
+   NOT `transform`. It is centred with Tailwind's `-translate-x-1/2
+   -translate-y-1/2`, which compiles to a `transform`, so a keyframe touching
+   `transform` would overwrite the centring and the dialog would animate from
+   the middle of the viewport's bottom-right quadrant. `scale` composes with
+   `transform` instead of replacing it.
+
+   The overlay gets --dur-fast rather than --dur-ambient: the token table
+   files backdrops under ambient, but that is for the lightbox's slow wash.
+   A confirm dialog has to be there the moment you ask for it — same 120ms
+   tween.backdrop uses in lib/motion.ts. */
+@keyframes alert-dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+@keyframes alert-dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+
+[data-slot='alert-dialog-overlay'][data-state='open'] {
+  animation: overlay-in var(--dur-fast) var(--ease-entrance);
+}
+
+[data-slot='alert-dialog-overlay'][data-state='closed'] {
+  animation: overlay-out var(--dur-fast-out) var(--ease-exit) forwards;
+}
+
+[data-slot='alert-dialog-content'][data-state='open'] {
+  animation: alert-dialog-in var(--dur-base) var(--ease-entrance);
+}
+
+[data-slot='alert-dialog-content'][data-state='closed'] {
+  animation: alert-dialog-out var(--dur-base-out) var(--ease-exit) forwards;
+}
+
+/* The toast's arrival and departure.
+
+   It comes up from the edge it sits on and leaves the same way — the strip is
+   pinned to the bottom, so anything else would read as unrelated to it. Both
+   halves are transform and opacity only, and the exit is the shorter of the
+   pair, which is the first and third rule in docs/MOTION.md.
+
+   The swipe states are Radix's, not ours: `data-swipe=move` is the finger
+   still down (Radix writes the offset into --radix-toast-swipe-move-y itself,
+   so the transform must not be animated or it would fight the gesture), and
+   `data-swipe=end` is the release, which is the only moment it should travel
+   on its own. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+[data-slot='toast'][data-state='open'] {
+  animation: toast-in var(--dur-base) var(--ease-entrance);
+}
+
+[data-slot='toast'][data-state='closed'] {
+  animation: toast-out var(--dur-base-out) var(--ease-exit) forwards;
+}
+
+[data-slot='toast'][data-swipe='move'] {
+  transform: translateY(var(--radix-toast-swipe-move-y));
+}
+
+[data-slot='toast'][data-swipe='cancel'] {
+  transform: translateY(0);
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+[data-slot='toast'][data-swipe='end'] {
+  animation: toast-out var(--dur-fast-out) var(--ease-exit) forwards;
+}
+
 /* The masonry positions cards absolutely; nothing should cause sideways
    scroll.
 
@@ -402,6 +515,37 @@ body {
   font-weight: 450;
   line-height: 1.4;
   letter-spacing: -0.006em;
+}
+
+/* One step under type-meta. The feed's shot-count badge and hover-title
+   pill — both small markers ON a card, never body copy. */
+.type-caption {
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.35;
+  letter-spacing: -0.006em;
+}
+
+/* ---------------------------------------------------------------------
+   Feed grid layout.
+
+   Same trick as .board-grid below: the column count is a user choice (the
+   feed's layout picker), set inline as --feed-cols, so it cannot be a
+   Tailwind utility — nothing would exist to generate one at build time.
+
+   Phones override it outright, same reasoning as the board: a chosen column
+   count is a decision about a wide screen, and honouring it under 640px
+   would produce slivers nobody asked for.
+   --------------------------------------------------------------------- */
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--feed-cols, 3), minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .feed-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ---------------------------------------------------------------------

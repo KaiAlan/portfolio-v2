@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { CATEGORIES, type Category } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { GridCirclesIcon } from '@/components/ui/icons'
 
 /**
  * The category filter row.
@@ -46,6 +47,7 @@ const CategoryLinks = ({ active, onChange }: CategoryLinksProps) => (
   >
     {ITEMS.map((item) => {
       const current = active === item.category
+      const isAll = item.category === null
       return (
         <Link
           key={item.key}
@@ -56,10 +58,14 @@ const CategoryLinks = ({ active, onChange }: CategoryLinksProps) => (
             onChange(item.category)
           }}
           className={cn(
-            'type-button rounded-pill px-3 py-1.5 whitespace-nowrap transition-colors',
-            current ? 'bg-ink text-on-dark' : 'text-muted hover:text-ink',
+            // min-h-8 (32px): the button-height floor, not just py-1.5's
+            // own height — type-button's line-height alone lands a hair
+            // under 32px.
+            'type-button inline-flex min-h-8 items-center gap-1.5 rounded-pill px-3 py-1.5 whitespace-nowrap transition-colors',
+            current ? 'bg-ink text-on-dark' : 'bg-surface-alt text-muted hover:text-ink',
           )}
         >
+          {isAll && <GridCirclesIcon className="size-3.5" />}
           {item.label}
         </Link>
       )

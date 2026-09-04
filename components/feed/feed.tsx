@@ -57,7 +57,9 @@ const Feed = ({ projects }: FeedProps) => {
           top of the viewport. */}
       <div
         className={cn(
-          'sticky top-16 z-40 -mx-4 bg-canvas px-4 pt-1 pb-5 transition-transform duration-300 ease-out sm:-mx-6 sm:px-6 lg:-mx-9 lg:px-9',
+          // Chrome docking, so it takes the slow step and the standard curve:
+          // it moves in both directions and neither end is "arriving".
+          'sticky top-16 z-40 -mx-4 bg-canvas px-4 pt-1 pb-5 transition-transform duration-(--dur-slow) ease-(--ease-standard) sm:-mx-6 sm:px-6 lg:-mx-9 lg:px-9',
           hidden && '-translate-y-full',
         )}
       >

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { imageUrl, srcSet, videoSources } from '@/lib/media'
 import type { Project } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { MORPH_SPRING } from '@/lib/motion'
+import { spring } from '@/lib/motion'
 import Skeleton from '@/components/ui/skeleton'
 import type { Placement } from './masonry-layout'
 
@@ -79,8 +79,16 @@ const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) =
 
   return (
     <motion.div
-      layout
-      transition={{ type: 'spring', stiffness: 350, damping: 40 }}
+      // "preserve-aspect", not `true`: the masonry re-flows on a filter change
+      // and a card whose ratio is continuous should morph fully, while one
+      // whose ratio is not should move without also being stretched. It
+      // degrades to position-only exactly when a full morph would distort.
+      layout="preserve-aspect"
+      // The SAME spring as the layoutId child below. These were two different
+      // springs (350/40 here, 460/42/0.8 there), which is the mismatch
+      // lib/motion.ts warns about — a parent and its own child interpolating
+      // different curves against each other is what makes a morph hitch.
+      transition={spring.morph}
       className={cn(placement ? 'absolute' : 'relative')}
       style={
         placement
@@ -108,8 +116,15 @@ const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) =
             shot's own aspect ratio, so both ends of the morph match. */}
         <motion.div
           layoutId={`shot-${project.id}`}
-          transition={MORPH_SPRING}
-          className="absolute inset-0 overflow-hidden rounded-card"
+          transition={spring.morph}
+          // borderRadius INLINE, not as `rounded-card`. Motion corrects the
+          // radius through a morph as a percentage rather than in pixels (to
+          // avoid a repaint per frame), and that correction only fires for a
+          // style or animated value — never for a CSS class. With the utility
+          // the corners visibly squash as the box changes shape, which is
+          // what this morph did until 2026-09-04. Same rule for boxShadow.
+          style={{ borderRadius: 'var(--radius-card)' }}
+          className="absolute inset-0 overflow-hidden"
         >
           {!loaded && <Skeleton className="absolute inset-0 rounded-none" />}
 
@@ -127,8 +142,10 @@ const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) =
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             fetchPriority={priority ? 'high' : 'auto'}
+            // Content arriving, not a hover response, so it gets the slow
+            // step — a poster snapping in at hover speed reads as a flash.
             className={cn(
-              'h-full w-full object-cover transition-opacity duration-300',
+              'h-full w-full object-cover transition-opacity duration-(--dur-slow)',
               loaded ? 'opacity-100' : 'opacity-0',
             )}
           />
@@ -141,8 +158,10 @@ const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) =
               playsInline
               preload={project.featured ? 'metadata' : 'none'}
               poster={imageUrl(shot.imageUrl, 900)}
+              // Faster than the poster: this one IS a hover response, and the
+              // crossfade onto the frame underneath should track the pointer.
               className={cn(
-                'absolute inset-0 h-full w-full object-cover transition-opacity duration-300',
+                'absolute inset-0 h-full w-full object-cover transition-opacity duration-(--dur-base)',
                 playing ? 'opacity-100' : 'opacity-0',
               )}
             >
@@ -154,7 +173,7 @@ const ProjectCard = ({ project, placement, priority, href }: ProjectCardProps) =
         </motion.div>
 
         {/* Chrome stays monochrome; the imagery carries all the colour. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-3 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent p-3 pt-10 opacity-0 transition-opacity duration-(--dur-fast) group-hover:opacity-100">
           <p className="type-button text-on-dark">{project.title}</p>
         </div>
       </Link>

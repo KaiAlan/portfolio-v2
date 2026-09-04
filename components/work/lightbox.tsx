@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { BACKDROP_FADE } from '@/lib/motion'
+import { settleMs, spring, tween } from '@/lib/motion'
 import { LightboxContext, acquireLightbox, releaseLightbox } from './lightbox-context'
 
 /**
@@ -25,9 +25,16 @@ import { LightboxContext, acquireLightbox, releaseLightbox } from './lightbox-co
  * detail panel and reach these callbacks through LightboxContext.
  */
 
-/** Matches the morph and the panel slide. Long enough for both to land, short
- *  enough that the URL is never visibly out of step with the screen. */
-const CLOSE_MS = 300
+/** How long to hold the route open while the close animation runs.
+ *
+ *  DERIVED from the morph, not guessed. This was a hardcoded 300 that had no
+ *  reference to the spring actually driving the animation, so retuning the
+ *  spring would silently desync the URL from the screen — the route would
+ *  change mid-morph, or the overlay would sit inert after it landed.
+ *
+ *  `visualDuration` is time-to-target rather than time-to-rest, which is why
+ *  `settleMs` adds headroom on top of it. */
+const CLOSE_MS = settleMs(spring.morph.visualDuration)
 
 type LightboxProps = {
   prevHref: string | null
@@ -147,7 +154,7 @@ const Lightbox = ({ prevHref, nextHref, children }: LightboxProps) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={BACKDROP_FADE}
+            transition={tween.backdrop}
           />
         )}
       </AnimatePresence>

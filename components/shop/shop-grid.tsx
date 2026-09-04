@@ -33,7 +33,11 @@ const ShopGrid = ({ items }: ShopGridProps) => {
                 alt={item.title}
                 loading="lazy"
                 decoding="async"
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                // --dur-base, down from 300ms. A hover scale is direct
+                // feedback: at 300ms the image is still growing well after
+                // the pointer has settled, which reads as lag rather than as
+                // response. transform-only, so it stays on the compositor.
+                className="h-full w-full object-cover transition-transform duration-(--dur-base) group-hover:scale-[1.02]"
               />
             </div>
             <div className="mt-3 flex items-baseline justify-between gap-3">

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import MusicProvider from '@/components/music/music-provider'
+import MotionProvider from '@/components/ui/motion-config'
 import { getSiteSettings } from '@/lib/contentful'
 import './globals.css'
 
@@ -65,7 +66,13 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-canvas">
-        <MusicProvider playlistId={youtubePlaylistId}>{children}</MusicProvider>
+        {/* MotionProvider outermost: it configures every Motion element in
+            both subtrees, including the ones inside MusicProvider. Same
+            reasoning that put MusicProvider here — one provider above the
+            site/studio split rather than one in each. */}
+        <MotionProvider>
+          <MusicProvider playlistId={youtubePlaylistId}>{children}</MusicProvider>
+        </MotionProvider>
       </body>
     </html>
   )

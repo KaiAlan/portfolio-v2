@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { tween } from '@/lib/motion'
 
 /**
  * The identity block, with an about card on hover.
@@ -87,8 +88,16 @@ const ProfileCard = () => {
           <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
+            // The exit carries its own, faster transition. An entrance is read
+            // and an exit is not, so a popover that leaves at the same speed
+            // it arrived feels like it is reluctant to go. 0.7x, which is the
+            // ratio the whole duration scale uses.
+            //
+            // The `y` is a transform, so `MotionConfig reducedMotion="user"`
+            // drops it and leaves the opacity fade — a cross-fade, which is
+            // the correct reduction rather than no animation at all.
+            exit={{ opacity: 0, y: -6, transition: tween.popoverOut }}
+            transition={tween.fade}
             // pt-3 rather than mt-3: the gap has to be inside the hover target.
             className="absolute top-full left-0 z-50 w-[22rem] pt-3"
           >

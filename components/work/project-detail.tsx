@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { tween } from '@/lib/motion'
 import type { MetaRow, Project, SiteSettings } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { lightboxAlreadyOpen, useLightbox } from './lightbox-context'
@@ -96,7 +97,11 @@ const ProjectDetail = ({ project, visibleMetaRows, variant = 'page' }: ProjectDe
                 // treatment belongs to the backdrop alone, and glass on glass
                 // just muddies the text.
                 'lg:border-r lg:border-hairline lg:bg-canvas',
-                'lg:transition-transform lg:duration-300 lg:ease-out',
+                // --dur-slow is exactly the lightbox's CLOSE_MS (settleMs of
+                // spring.morph), so on close the panel finishes sliding out
+                // as the morph lands and the route changes on the next frame.
+                // The two used to be independently hardcoded at 300ms each.
+                'lg:transition-transform lg:duration-(--dur-slow) lg:ease-(--ease-standard)',
                 shown ? 'lg:translate-x-0' : 'lg:-translate-x-full',
               ]
             : 'lg:sticky lg:top-16 lg:self-start',
@@ -152,7 +157,7 @@ const ProjectDetail = ({ project, visibleMetaRows, variant = 'page' }: ProjectDe
         key={project.id}
         initial={isSwitch ? { opacity: 0 } : false}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
+        transition={tween.fade}
         // The empty space around a shot is backdrop, so clicking it closes.
         // Each figure stops the event, which keeps clicks on the artwork inert.
         onClick={isModal ? lightbox?.close : undefined}

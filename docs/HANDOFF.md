@@ -4,7 +4,7 @@ Written for a session starting cold. Read `PLAN.md` for the full executable
 plan and `CONTEXT.md` for why each decision was made; this file is the
 current state and what to do next.
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-04 (motion system)
 **Repo:** https://github.com/KaiAlan/portfolio-v2 (public, MIT)
 **Local:** `/home/kaialan/portfolio-v2` (WSL2; moved off `C:\home\claude-projects\portfolio` on 2026-09-03)
 
@@ -101,6 +101,96 @@ meant editing code.
   Live playlist: **"Everyday Vibes"** (`PLbEn9f2FZ8Rk`). Note that id is 13
   characters, not the usual 34 — `parsePlaylistId`'s pattern is deliberately
   loose for exactly this reason. Don't "fix" it by asserting a length.
+
+### Motion system (2026-09-04)
+
+Motion was the one design axis with no tokens — colour, radius, shadow and type
+were all tokenised with reasons, while motion was ~30 bare `transition-*` classes
+and nine unrelated ad-hoc durations. **`docs/MOTION.md` is now the law and
+`CLAUDE.md` points every session at it.** The sourced research behind it is
+`docs/superpowers/research/2026-09-04-motion-design.md` (read against the
+installed `motion@13.1.1`, not the docs site — they disagree).
+
+- **Tokens in `globals.css`**: `--ease-standard|entrance|exit|overshoot` (IBM
+  Carbon's productive curves — M3's `emphasized` is a two-segment SVG path and
+  cannot be a CSS `cubic-bezier()` at all) and `--dur-instant|fast|base|slow|
+  page|ambient` plus a `-out` variant of each at 0.7×.
+- **Tailwind's defaults are overridden**, not worked around.
+  `--default-transition-duration` and `--default-transition-timing-function`
+  ship as `150ms` and `cubic-bezier(0.4, 0, 0.2, 1)` — the latter is literally
+  `ease-in-out`, so every bare `transition-*` in the app was easing *in* as well
+  as out and read as lagging the pointer. Overriding the two tokens fixed all
+  ~30 at once. **A bare `transition-colors` is now correct by default**; only
+  add `duration-`/`ease-` where the element genuinely differs.
+- **`lib/motion.ts` is a preset library**, not three constants.
+  `spring.morph|sheet|chrome|toggle|release|scroll`, `tween.fade|exit|backdrop|
+  popoverOut`, `gridStagger()`, `dampHalfLife()`, `settleMs()`. Several presets
+  have no consumer yet — they are vocabulary, the same way `--dur-instant` and
+  `--ease-overshoot` are.
+
+**Four real bugs fixed, not just a restyle:**
+
+1. **The morph's corners were squashing.** Motion corrects `borderRadius`
+   through a layout animation as a *percentage* to avoid a repaint per frame,
+   and that correction **only fires for an inline `style` or an animated value
+   — never for a CSS class**. Both ends carried `rounded-card` as a Tailwind
+   utility, so it never fired. Now inline on both (`project-card.tsx`,
+   `shot-media.tsx`). Same rule applies to `boxShadow`. This is the single most
+   likely cause of any future "why does the morph look wrong".
+2. **Two different springs inside one card.** The wrapper's `layout` ran at
+   `{350, 40}` while its own `layoutId` child ran `MORPH_SPRING` `{460, 42,
+   0.8}` — exactly the mismatch `lib/motion.ts` warned about in its header. Both
+   now use `spring.morph`, and the wrapper is `layout="preserve-aspect"` so a
+   filter re-flow degrades to position-only rather than distorting.
+3. **The studio's drag auto-scroll was frame-rate dependent.**
+   `use-drag-autoscroll.ts` advanced `scrollTop` by 22px **per frame**, so the
+   same board scrolled 1320px/s at 60Hz, 2640px/s at 120Hz and 3168px/s at
+   144Hz. Now px-per-second integrated against a clamped `rAF` delta. The clamp
+   matters: a backgrounded tab resumes with a multi-second `dt` and would
+   teleport the panel.
+4. **`CLOSE_MS` was a hardcoded 300 with no reference to the spring driving the
+   close.** Now `settleMs(spring.morph.visualDuration)`, so retuning the spring
+   cannot silently desync the URL from the screen.
+
+**`prefers-reduced-motion` is handled for the first time** (WCAG SC 2.3.3 — it
+means *reduce*, not remove). Two halves, both needed: `MotionConfig
+reducedMotion="user"` in the root layout, which makes Motion skip transform and
+layout animations while leaving opacity and colour animating; and a CSS block in
+`globals.css` for everything Motion never sees — `animate-pulse`, plain CSS
+transitions, the YouTube iframe. The CSS uses `0.01ms` rather than `0` so
+`transitionend` handlers still fire.
+
+**Two design decisions were deliberately NOT overwritten by the research**, and
+both carry the reasoning inline so they don't get "corrected" later:
+
+- **The backdrop stays at 120ms**, not the ~400ms wash general guidance suggests.
+  The cosmos.so reference has the feed already blurred on the frame after the
+  click — the blur is the context switch and lands *before* the morph, so the
+  morph is unambiguously the subject. 400ms makes them two co-equal events.
+- **The morph stays fast.** The old hand-tuned `{460, 42, 0.8}` works out to
+  ζ = 1.095 and a ~152ms settle. `visualDuration: 0.2, bounce: 0` reproduces
+  that at ~153ms, so it is the same feel in the parameterisation you can
+  actually reason about — *not* a retune. The generic recommendation was 0.45s,
+  which would be 2.5× slower and lose the thing the reference was chosen for.
+
+**Verified**: `rm -rf .next && npm run build` clean first try; the emitted CSS
+checked for the token definitions, the Tailwind overrides, the
+`duration-(--dur-*)` utilities and the reduced-motion block; headless Chromium
+pass in **both** normal and `reducedMotion: 'reduce'` contexts — poster
+transition `0.28s` vs `1e-05s`, inline `borderRadius` resolving to `4px` at both
+ends, lightbox open → arrow-key → Escape → feed interactive again, zero console
+errors.
+
+**Still unverified**: how any of it *feels*. A scripted run proves the numbers
+resolve, not that the morph reads well. Judge live — that is still item 2 under
+"Next session".
+
+**Noticed, not fixed, not caused by this work:** two `[role="dialog"]
+aria-modal="true"` elements linger in the DOM after the lightbox closes (one per
+project visited via arrow-key). They are inert — `pointer-events-none`, feed
+clickable — and it follows from Next keeping the modal slot mounted from its
+client cache, which `lightbox.tsx` already documents. It is an accessibility
+smell rather than a motion one, and it wants its own look.
 
 ### P3 — The studio (v1, localhost-only)
 Built against `docs/superpowers/plans/2026-09-03-admin-studio.md`, all 14

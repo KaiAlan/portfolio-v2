@@ -51,7 +51,12 @@ const MusicPill = () => {
 
   return (
     <div
-      className="hidden items-center gap-3 rounded-pill bg-control py-1.5 pr-4 pl-1.5 transition-colors duration-500 lg:flex"
+      // --dur-ambient, the one step in the scale that is allowed to be slow.
+      // This is the exception the token exists for: the tint is not feedback
+      // for anything the user just did, it is the pill drifting to the colour
+      // of whatever started playing. Fast would read as a flicker on every
+      // track change. Everything else on this pill uses the default.
+      className="hidden items-center gap-3 rounded-pill bg-control py-1.5 pr-4 pl-1.5 transition-colors duration-(--dur-ambient) lg:flex"
       style={tint ? { backgroundColor: tint } : undefined}
     >
       <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-pill bg-ink text-on-dark">

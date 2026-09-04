@@ -68,6 +68,59 @@
   --shadow-float: 0 6px 44px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.03);
 
   --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* -------------------------------------------------------------------
+     Motion. The rules and the sourcing live in docs/MOTION.md; the long
+     form is docs/superpowers/research/2026-09-04-motion-design.md.
+
+     Named for what they are FOR, not what they are: --ease-exit survives a
+     redesign, --ease-cubic-4 does not.
+
+     These are IBM Carbon's productive curves, not Material 3's. M3's
+     headline `emphasized` easing is a two-segment SVG path and cannot be
+     written as a CSS cubic-bezier() at all — the value everyone circulates
+     as "emphasized" is actually M3's `standard`. Carbon's set is web-native
+     and tuned for a dense, work-focused surface, which is what this is.
+     ------------------------------------------------------------------- */
+
+  /* On screen at both ends. */
+  --ease-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+  /* Arriving. Starts immediately, so it tracks the input that caused it. */
+  --ease-entrance: cubic-bezier(0, 0, 0.38, 0.9);
+  /* Leaving. Nobody reads an exiting element, so it gets out of the way. */
+  --ease-exit: cubic-bezier(0.2, 0, 1, 0.9);
+  /* Overshoot (Motion's backOut). ONE thing per screen, and never on text,
+     on a morph, or on anything that has to land on a boundary. */
+  --ease-overshoot: cubic-bezier(0.33, 1.53, 0.69, 0.99);
+
+  --dur-instant: 70ms; /* hover, focus, press */
+  --dur-fast: 120ms; /* small fades, icon swaps */
+  --dur-base: 180ms; /* the default — dropdowns, chips, tooltips */
+  --dur-slow: 280ms; /* panels, popovers */
+  --dur-page: 420ms; /* route change, lightbox chrome */
+  --dur-ambient: 700ms; /* backdrop, ambient colour */
+
+  /* Exits run at 0.7x their entrance, anchored on Material 1's published
+     225ms enter / 195ms leave and pushed a little harder. */
+  --dur-fast-out: 85ms;
+  --dur-base-out: 125ms;
+  --dur-slow-out: 195ms;
+  --dur-page-out: 295ms;
+
+  /* Tailwind ships these as 150ms and cubic-bezier(0.4, 0, 0.2, 1) —
+     verified in node_modules/tailwindcss/theme.css:492. That curve is
+     literally --ease-in-out, so every bare `transition-*` class in the app
+     was easing IN as well as out: it starts slow, which reads as the
+     control lagging behind the pointer that triggered it.
+
+     Overriding the two tokens fixes every such class at once, the same way
+     `cursor: pointer` is fixed once in a base rule below rather than as a
+     utility on several dozen buttons. The practical upshot is that a bare
+     `transition-colors` is now correct by default, and an explicit
+     `duration-` or `ease-` utility is only for elements that genuinely
+     differ from the baseline. */
+  --default-transition-duration: var(--dur-fast);
+  --default-transition-timing-function: var(--ease-entrance);
 }
 
 :root {
@@ -135,6 +188,35 @@ body {
   [role='button']:not([aria-disabled='true']),
   summary {
     cursor: pointer;
+  }
+}
+
+/* Reduced motion — the CSS half.
+
+   `<MotionConfig reducedMotion="user">` in the root layout covers everything
+   Motion drives, and it does the right thing already: it skips transform and
+   layout animations while leaving opacity and colour animating, which is the
+   reduce-don't-remove principle WCAG SC 2.3.3 actually asks for.
+
+   This block exists for everything Motion never sees — Tailwind's
+   `animate-pulse` skeletons, CSS transitions, third-party embeds, and the
+   YouTube iframe. Without it those keep running for a user who asked the OS
+   for less movement.
+
+   0.01ms rather than 0: `transitionend` and `animationend` still fire, so
+   nothing that waits on them hangs forever. `!important` because this has to
+   beat a utility class, which is the whole point.
+
+   Scroll-behavior is included because a smooth-scrolled jump is exactly the
+   large-distance movement the preference is about. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

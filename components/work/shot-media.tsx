@@ -3,7 +3,7 @@
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { imageUrl, srcSet, videoSources } from '@/lib/media'
-import { MORPH_SPRING } from '@/lib/motion'
+import { spring } from '@/lib/motion'
 import type { Shot } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -73,14 +73,19 @@ const ShotMedia = ({
     else el.pause()
   }, [onScreen])
 
-  const box = 'max-h-[80vh] w-auto max-w-full rounded-card bg-surface-warm object-contain'
+  // No `rounded-card` here. This is the far end of the card -> lightbox morph,
+  // and Motion only corrects borderRadius through a morph when it is a style
+  // or animated value, never a CSS class — with the utility the corners squash
+  // as the box grows. Applied inline below instead, on both ends.
+  const box = 'max-h-[80vh] w-auto max-w-full bg-surface-warm object-contain'
+  const radius = { borderRadius: 'var(--radius-card)' }
 
   if (isVideo) {
     return (
       <motion.video
         ref={videoRef}
         layoutId={layoutId}
-        transition={MORPH_SPRING}
+        transition={spring.morph}
         muted
         loop
         playsInline
@@ -88,6 +93,7 @@ const ShotMedia = ({
         poster={imageUrl(shot.imageUrl, 1600)}
         width={shot.width}
         height={shot.height}
+        style={radius}
         className={cn(box, className)}
       >
         {videoSources(shot).map((source) => (
@@ -102,7 +108,8 @@ const ShotMedia = ({
       ref={imageRef}
       onLoad={() => setLoaded(true)}
       layoutId={layoutId}
-      transition={MORPH_SPRING}
+      transition={spring.morph}
+      style={radius}
       src={imageUrl(shot.imageUrl, 1600)}
       srcSet={srcSet(shot.imageUrl, shot.width)}
       sizes={sizes}

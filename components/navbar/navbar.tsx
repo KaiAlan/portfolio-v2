@@ -52,7 +52,7 @@ const Navbar = ({ sticky = true }: { sticky?: boolean }) => (
       sticky && 'sticky top-0 z-50',
     )}
   >
-    <div className="flex h-18 w-full items-center justify-between gap-6 px-4 sm:px-6 lg:px-9">
+    <div className="flex h-(--nav-h) w-full items-center justify-between gap-6 px-4 sm:px-6 lg:px-9">
       <div className="flex min-w-0 items-center gap-6">
         <ProfileCard />
 

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { savePlaylist } from '@/app/admin/actions'
+import { Button } from '@/components/ui/button'
 
 /**
  * Sets the playlist behind the nav music player.
@@ -58,14 +59,14 @@ const PlaylistField = ({ initial }: { initial: string }) => {
           placeholder="https://www.youtube.com/playlist?list=…"
           className="type-meta w-full max-w-lg rounded-pill bg-control px-4 py-2 text-ink outline-none placeholder:text-muted-soft"
         />
-        <button
+        <Button
           type="button"
           disabled={!dirty || isPending}
           onClick={save}
-          className="type-button rounded-pill bg-ink px-4 py-2 whitespace-nowrap text-on-dark transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="whitespace-nowrap"
         >
           {isPending ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </div>
 
       {saved && <span className="type-meta text-muted">Saved.</span>}

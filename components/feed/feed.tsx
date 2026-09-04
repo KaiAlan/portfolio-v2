@@ -47,9 +47,10 @@ const Feed = ({ projects }: FeedProps) => {
 
   return (
     <>
-      {/* Sticky directly beneath the 64px header, and pulled full-bleed out of
-          the page's padding so cards scroll under an opaque bar rather than
-          past its edges. The tabs still line up with the first column.
+      {/* Sticky directly beneath the header — at --nav-h, never a literal, so
+          this cannot drift out of step with it again — and pulled full-bleed
+          out of the page's padding so cards scroll under an opaque bar rather
+          than past its edges. The tabs still line up with the first column.
 
           Hiding slides it up by its own height, which tucks it exactly behind
           the opaque z-50 header rather than moving it off-screen — so nothing
@@ -57,9 +58,14 @@ const Feed = ({ projects }: FeedProps) => {
           top of the viewport. */}
       <div
         className={cn(
+          // top-(--nav-h), not a hardcoded top-16. The header is 72px and this
+          // said 64, so the row pinned 8px too high and the z-50 header
+          // painted over its top edge — which is why it looked clipped and
+          // appeared to sit ON the cards rather than above them.
+          'sticky top-(--nav-h) z-40 -mx-4 bg-canvas px-4 pt-2 pb-5 sm:-mx-6 sm:px-6 lg:-mx-9 lg:px-9',
           // Chrome docking, so it takes the slow step and the standard curve:
           // it moves in both directions and neither end is "arriving".
-          'sticky top-16 z-40 -mx-4 bg-canvas px-4 pt-1 pb-5 transition-transform duration-(--dur-slow) ease-(--ease-standard) sm:-mx-6 sm:px-6 lg:-mx-9 lg:px-9',
+          'transition-transform duration-(--dur-slow) ease-(--ease-standard)',
           hidden && '-translate-y-full',
         )}
       >

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { tween } from '@/lib/motion'
+import { Button } from '@/components/ui/button'
 
 /**
  * The identity block, with an about card on hover.
@@ -129,15 +130,15 @@ const ProfileCard = () => {
 
               <div className="flex items-center gap-2 border-t border-hairline pt-3">
                 {LINKS.map((link) => (
-                  <a
-                    key={link.label}
-                    href={link.href}
-                    target={link.href.startsWith('http') ? '_blank' : undefined}
-                    rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
-                    className="type-button rounded-pill bg-surface-warm px-3 py-1.5 text-ink transition-opacity hover:opacity-70"
-                  >
-                    {link.label}
-                  </a>
+                  <Button key={link.label} asChild variant="secondary" size="sm">
+                    <a
+                      href={link.href}
+                      target={link.href.startsWith('http') ? '_blank' : undefined}
+                      rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+                    >
+                      {link.label}
+                    </a>
+                  </Button>
                 ))}
               </div>
             </div>

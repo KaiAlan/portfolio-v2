@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { login, type LoginState } from './actions'
+import { Button } from '@/components/ui/button'
 
 const initial: LoginState = {}
 
@@ -20,13 +21,9 @@ export default function LoginForm() {
           placeholder="Password"
           className="rounded-lg border border-card-edge bg-canvas px-3 py-2 text-ink"
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="type-button rounded-pill bg-surface-warm px-3 py-2 text-ink disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending} variant="secondary">
           {pending ? 'Checking…' : 'Enter'}
-        </button>
+        </Button>
         {state.error && <p className="type-meta text-muted">{state.error}</p>}
       </form>
     </main>

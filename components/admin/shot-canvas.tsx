@@ -8,6 +8,7 @@ import { removeShot } from '@/lib/admin/shots'
 import type { PublishState } from '@/lib/admin/publish-state'
 import type { AdminShot } from '@/lib/preview'
 import ShotsStrip from './shots-strip'
+import { Button } from '@/components/ui/button'
 
 /**
  * The editor's left column: one shot large, the rest as a strip beneath it.
@@ -187,21 +188,12 @@ const ShotCanvas = ({
               ' It is also the cover, so the next shot is promoted and the project is republished — any saved edits you have not published yet go live with it.'}
           </p>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => destroy(pending.id)}
-              className="type-button rounded-pill bg-ink px-4 py-2 text-on-dark transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
+            <Button type="button" disabled={busy} onClick={() => destroy(pending.id)}>
               {busy ? 'Deleting…' : 'Delete'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(null)}
-              className="type-button rounded-pill px-4 py-2 text-muted transition-colors hover:text-ink"
-            >
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setConfirming(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

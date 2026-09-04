@@ -1,6 +1,6 @@
 'use server'
 
-import { updateTag } from 'next/cache'
+import { revalidatePath, revalidateTag, updateTag } from 'next/cache'
 import { redirect } from 'next/navigation'
 import {
   cmaEnv,
@@ -73,6 +73,109 @@ function parseAssets(raw: FormDataEntryValue | null): UploadedAsset[] {
   })
 }
 
+/** Waits for Contentful's DELIVERY API to reflect a publish.
+ *
+ *  This exists because of a measured race, not a theoretical one. The delivery
+ *  CDN lags a publish by roughly 1.5-3 seconds (measured against this space:
+ *  stale at 1.5s and 2.1s, current at 2.9s). Every mutation here published and
+ *  then invalidated in the same breath, so Next regenerated the feed INSIDE
+ *  that window, re-read the old data, and — because getProjects() is
+ *  `cacheLife('days')` — cached the stale answer for another day.
+ *
+ *  The symptom was a reorder that showed correctly in the studio and never
+ *  appeared on the site. The studio reads the Preview API, which is uncached
+ *  and has no CDN in front of it, so it always looked right; the two were
+ *  never actually disagreeing about the data, only about when it arrived.
+ *
+ *  Polls until the entry's delivery-side `updatedAt` catches up to what was
+ *  just written, then gives up. Giving up is safe and deliberate: the worst
+ *  case is the old behaviour, and blocking a save on Contentful's CDN for
+ *  longer than this would be worse than a late feed.
+ *
+ *  Only entries the public site actually reads need this — a draft is not on
+ *  the delivery API at all, so there is nothing to wait for. */
+async function awaitDelivery(entryId: string, notBefore: string, attempts = 10): Promise<void> {
+  const space = process.env.CONTENTFUL_SPACE_ID
+  const token = process.env.CONTENTFUL_DELIVERY_TOKEN
+  const env = process.env.CONTENTFUL_ENVIRONMENT || 'master'
+  if (!space || !token) return
+
+  const url = `https://cdn.contentful.com/spaces/${space}/environments/${env}/entries/${entryId}`
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const entry = (await res.json()) as { sys?: { updatedAt?: string } }
+        // String compare is correct here: these are ISO-8601 UTC timestamps.
+        if (entry.sys?.updatedAt && entry.sys.updatedAt >= notBefore) return
+      }
+    } catch {
+      // A failed probe is not a reason to fail the save. Fall through, retry,
+      // and at worst invalidate as eagerly as the code did before.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+}
+
+/** Invalidates everything a mutation can change on the public site.
+ *
+ *  Three APIs, because they do three different jobs and the bug this fixes
+ *  needed all of them. Measured against a production build, not reasoned about:
+ *
+ *  1. `updateTag` — read-your-own-writes. Expires the tag so the next request
+ *     blocks for fresh data. Server Actions only.
+ *  2. `revalidateTag(tag, 'max')` — marks tagged data stale so it refreshes
+ *     with stale-while-revalidate semantics. A profile is required; without
+ *     one it is the deprecated legacy behaviour.
+ *  3. `revalidatePath` — and this is the one that actually fixed it.
+ *
+ *  Why (3) is not redundant with (1) and (2): `/` is a FULLY static prerender
+ *  (`○` in the build output). Its HTML is its own cache entry, produced at
+ *  build time, and it does not inherit the tags of the `use cache` functions
+ *  whose output it embedded. So expiring the `projects` and `settings` tags
+ *  invalidated `getProjects()` and changed nothing anybody could see — the
+ *  route kept serving frozen HTML until its 1-day `cacheLife` ran out.
+ *
+ *  That was the reported bug: a reorder saved, the studio showed it (the
+ *  studio reads the uncached Preview API), and the feed served the old
+ *  sequence indefinitely. Verified fixed by driving a real reorder against a
+ *  production build and reading the served HTML back.
+ *
+ *  Expect the FIRST request after a mutation to still be stale — that is
+ *  stale-while-revalidate doing what it says — and every request after it to
+ *  be current.
+ *
+ *  Anything that can change what a visitor sees goes through here. */
+const PATHS_FOR_TAG: Record<string, ReadonlyArray<[string, 'page' | 'layout' | undefined]>> = {
+  // The feed, every project detail page, and the sitemap all read projects.
+  projects: [['/', undefined], ['/(site)/work/[slug]', 'page'], ['/sitemap.xml', undefined]],
+  shop: [['/shop', undefined]],
+  // siteSettings carries projectOrder, shopOrder, visibleMetaRows and the
+  // playlist id — which between them reach every public route.
+  settings: [['/', undefined], ['/shop', undefined], ['/(site)/work/[slug]', 'page']],
+}
+
+function invalidate(...tags: string[]) {
+  const paths = new Set<string>()
+
+  for (const tag of tags) {
+    updateTag(tag)
+    revalidateTag(tag, 'max')
+    for (const [path, type] of PATHS_FOR_TAG[tag] ?? []) {
+      // Keyed so two tags naming the same route revalidate it once.
+      paths.add(JSON.stringify([path, type]))
+    }
+  }
+
+  for (const entry of paths) {
+    const [path, type] = JSON.parse(entry) as [string, 'page' | 'layout' | undefined]
+    revalidatePath(path, type)
+  }
+}
+
 /** Saves a DRAFT. It never publishes — on an already-live project the site
  *  keeps serving the last published version until Publish is pressed. */
 export async function saveProject(_prev: SaveState, formData: FormData): Promise<SaveState> {
@@ -143,7 +246,7 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
       published: false,
       ...(shots.length > 0 ? { shots, coverShot: shots[0] } : {}),
     })
-    updateTag('projects')
+    invalidate('projects')
     redirect(`/admin/projects/${created.sys.id}`)
   }
 
@@ -164,7 +267,7 @@ export async function saveProject(_prev: SaveState, formData: FormData): Promise
     throw error
   }
 
-  updateTag('projects')
+  invalidate('projects')
   return { savedAt: Date.now(), id }
 }
 
@@ -247,9 +350,10 @@ export async function publishProject(id: string): Promise<{ error?: string }> {
   const fresh = await getRawProject(id)
   if (!fresh) return { error: 'That project no longer exists.' }
   await updateEntry(id, { published: true }, fresh.sys.updatedAt)
-  await publishEntry(id)
+  const publishedProject = await publishEntry(id)
+  await awaitDelivery(id, publishedProject.sys.updatedAt)
 
-  updateTag('projects')
+  invalidate('projects')
   return {}
 }
 
@@ -262,9 +366,10 @@ export async function unpublishProject(id: string): Promise<{ error?: string }> 
   // would also work, but this keeps one mechanism for "off the site" and
   // leaves the entry resolvable for anything still linking to it.
   await updateEntry(id, { published: false }, entry.sys.updatedAt)
-  await publishEntry(id)
+  const hiddenProject = await publishEntry(id)
+  await awaitDelivery(id, hiddenProject.sys.updatedAt)
 
-  updateTag('projects')
+  invalidate('projects')
   return {}
 }
 
@@ -340,7 +445,7 @@ export async function addShots(
 
   await updateEntry(projectId, { shots, coverShot }, project.sys.updatedAt)
 
-  updateTag('projects')
+  invalidate('projects')
   return {}
 }
 
@@ -354,7 +459,7 @@ export async function reorderShots(
   const shots = shotIds.map(toEntryLink)
   await updateEntry(projectId, { shots }, project.sys.updatedAt)
 
-  updateTag('projects')
+  invalidate('projects')
   return {}
 }
 
@@ -420,8 +525,9 @@ export async function deleteShot(projectId: string, shotId: string): Promise<Del
   // the published version, and publish is per-ENTRY — so any saved-but-
   // unpublished edits to this project's own fields go live along with it.
   // That is a real side effect and the delete confirmation warns about it.
+  let coverRepublishedAt: string | undefined
   if (coverChanged && publishState(project.sys) !== 'draft') {
-    await publishEntry(projectId)
+    coverRepublishedAt = (await publishEntry(projectId)).sys.updatedAt
   }
 
   // Past this point the shot has already left the project, so a failure is a
@@ -438,7 +544,11 @@ export async function deleteShot(projectId: string, shotId: string): Promise<Del
     warning = `The shot was removed from this project, but cleaning it out of Contentful failed: ${detail}`
   }
 
-  updateTag('projects')
+  // Only when the cover was republished is there anything on the delivery API
+  // to wait for; an ordinary shot deletion never touches the published version.
+  if (coverRepublishedAt) await awaitDelivery(projectId, coverRepublishedAt)
+
+  invalidate('projects')
   return warning ? { warning } : {}
 }
 
@@ -450,7 +560,7 @@ export async function setCover(projectId: string, shotId: string): Promise<{ err
 
   await updateEntry(projectId, { coverShot: toEntryLink(shotId) }, project.sys.updatedAt)
 
-  updateTag('projects')
+  invalidate('projects')
   return {}
 }
 
@@ -551,7 +661,7 @@ export async function createProjectsFromAssets(
     }
   }
 
-  if (created > 0) updateTag('projects')
+  if (created > 0) invalidate('projects')
   return { created, failed }
 }
 
@@ -569,13 +679,18 @@ export async function saveOrder(projectIds: string[]): Promise<{ error?: string 
     }
     throw error
   }
-  await publishEntry(settings.sys.id)
+  const published = await publishEntry(settings.sys.id)
 
-  // getProjects() reads through both tags — it applies the order from
-  // settings to the project list — so a reorder must invalidate both or the
-  // feed keeps serving the old sequence.
-  updateTag('settings')
-  updateTag('projects')
+  // Wait for delivery BEFORE invalidating, and wait on the timestamp the
+  // publish actually returned rather than a clock reading — `Date.now()` here
+  // is later than the entry's own updatedAt, so it could never be satisfied
+  // and would just burn the whole timeout on every save. See awaitDelivery for
+  // why any of this is needed: invalidating first is what re-cached the OLD
+  // order for a day and made this look like a bug in applyOrder when the sort
+  // was never wrong.
+  await awaitDelivery(settings.sys.id, published.sys.updatedAt)
+
+  invalidate('settings', 'projects')
   return {}
 }
 
@@ -610,8 +725,9 @@ export async function savePlaylist(input: string): Promise<{ error?: string }> {
     }
     throw error
   }
-  await publishEntry(settings.sys.id)
+  const publishedSettings = await publishEntry(settings.sys.id)
+  await awaitDelivery(settings.sys.id, publishedSettings.sys.updatedAt)
 
-  updateTag('settings')
+  invalidate('settings')
   return {}
 }

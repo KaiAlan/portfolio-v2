@@ -16,6 +16,7 @@ import DropZone from './drop-zone'
 import NewProjectCanvas from './new-project-canvas'
 import ProjectFields, { type ProjectFormValues } from './project-fields'
 import ShotCanvas from './shot-canvas'
+import { Button } from '@/components/ui/button'
 
 /**
  * The whole project editor: header, shot canvas, fields.
@@ -40,10 +41,8 @@ const FORM_ID = 'project-form'
    reaches the public site, so it is the one that earns the colour. Save draft
    stays neutral because it is the safe action, and Unpublish stays a ghost
    because it should never be the thing your eye lands on first. */
-const btn = 'type-button rounded-pill px-4 py-2 transition-opacity disabled:opacity-50'
-const primary = `${btn} bg-live text-live-ink hover:opacity-85`
-const neutral = `${btn} bg-surface-warm text-ink hover:opacity-85`
-const ghost = `${btn} text-muted transition-colors hover:text-ink`
+/* Variants now, not hand-rolled class strings — but the same three roles and
+   the same reasoning. `live` exists purely for Publish. */
 
 const ProjectEditor = ({
   values,
@@ -94,28 +93,28 @@ const ProjectEditor = ({
         {state.savedAt && !state.error && <span className="type-meta text-muted">Saved.</span>}
         {publishError && <span className="type-meta text-muted">{publishError}</span>}
 
-        <button type="submit" form={FORM_ID} disabled={pending} className={neutral}>
+        <Button type="submit" form={FORM_ID} disabled={pending} variant="secondary">
           {pending ? 'Saving…' : 'Save draft'}
-        </button>
+        </Button>
         {!isNew && (
-          <button
+          <Button
             type="button"
             disabled={pending || busy}
             onClick={() => run(publishProject)}
-            className={primary}
+            variant="live"
           >
             {busy ? 'Publishing…' : 'Publish'}
-          </button>
+          </Button>
         )}
         {!isNew && publish !== 'draft' && (
-          <button
+          <Button
             type="button"
             disabled={pending || busy}
             onClick={() => run(unpublishProject)}
-            className={ghost}
+            variant="ghost"
           >
             Unpublish
-          </button>
+          </Button>
         )}
       </div>
     </div>

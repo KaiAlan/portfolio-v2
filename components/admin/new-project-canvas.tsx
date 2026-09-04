@@ -10,6 +10,7 @@ import { imageUrl } from '@/lib/media'
 import type { AdminShot } from '@/lib/preview'
 import { DropTarget, FileList } from './drop-zone'
 import ShotsStrip from './shots-strip'
+import { Button } from '@/components/ui/button'
 
 /**
  * The new-project page's right-hand column.
@@ -159,20 +160,17 @@ const NewProjectCanvas = ({
               {assets.length} {assets.length === 1 ? 'image' : 'images'} uploaded. What are they?
             </p>
             <div className="flex flex-col gap-2 self-stretch">
-              <button
-                type="button"
-                onClick={() => setMode('one')}
-                className="type-button rounded-card bg-ink px-4 py-2.5 text-on-dark transition-opacity hover:opacity-90"
-              >
+              <Button type="button" onClick={() => setMode('one')} className="w-full">
                 One project with {assets.length} {assets.length === 1 ? 'shot' : 'shots'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => setMode('many')}
-                className="type-button rounded-card bg-surface-warm px-4 py-2.5 text-ink transition-opacity hover:opacity-85"
+                className="w-full"
               >
                 {assets.length} {assets.length === 1 ? 'project' : 'projects'}, one per image
-              </button>
+              </Button>
             </div>
             {/* Named up front, because the two paths differ in what happens to
                 the fields on the left — and that is not recoverable by undo. */}
@@ -217,21 +215,12 @@ const NewProjectCanvas = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={creating}
-            onClick={createMany}
-            className="type-button rounded-pill bg-ink px-4 py-2 text-on-dark transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
+          <Button type="button" disabled={creating} onClick={createMany}>
             {creating ? 'Creating…' : `Create ${planned.length} drafts`}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('choosing')}
-            className="type-button rounded-pill px-4 py-2 text-muted transition-colors hover:text-ink"
-          >
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setMode('choosing')}>
             Back
-          </button>
+          </Button>
           {/* Slugs are checked against the whole space when the action runs, so
               a suffix can still appear that this preview did not show. */}
           <span className="type-meta text-muted-soft">
@@ -288,18 +277,19 @@ const NewProjectCanvas = ({
         <DropTarget onFiles={(l) => void onFiles(l)} disabled={uploading} className="px-4 py-2">
           <span className="type-meta text-muted">{uploading ? 'Uploading…' : 'Add more'}</span>
         </DropTarget>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => {
             void discardAssets(assets.map((a) => a.assetId))
             onAssetsChange([])
             reset()
             setMode('choosing')
           }}
-          className="type-button rounded-pill px-3 py-2 text-muted transition-colors hover:text-ink"
         >
           Clear
-        </button>
+        </Button>
       </div>
 
       <FileList files={files} />

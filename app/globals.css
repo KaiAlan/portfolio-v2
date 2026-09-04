@@ -67,6 +67,56 @@
      the no-borders rule — see --color-card-edge. */
   --shadow-float: 0 6px 44px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.03);
 
+  /* Interactive field surfaces.
+     
+     SEPARATE from --color-card-edge on purpose, and this is the important
+     part: card-edge (#ebebeb) is what every feed card wears, and it is
+     deliberately near-invisible so a white-to-the-edge shot does not dissolve
+     into the canvas. It was ALSO being used as the border of every text input,
+     where near-invisible is exactly wrong — 1.19:1 against the white panel,
+     so the box barely read as a box. That is most of why the studio's forms
+     looked cheap.
+
+     field-edge is 3.03:1 against white, which clears the 3:1 WCAG 1.4.11 asks
+     of a control boundary. The fill does the rest of the work: a field on a
+     white panel should not itself be white. */
+  --color-field: #f5f5f5;
+  --color-field-edge: #949494;
+
+  /* ---- shadcn/ui token bridge ---------------------------------------
+     shadcn's primitives are written against its own variable names. Rather
+     than run two palettes, every one of them is aliased onto the tokens
+     above, so `bg-primary` and `bg-ink` are the same colour by construction
+     and there is still exactly one place a colour is decided.
+
+     Two of these are deliberate flattenings, not oversights:
+
+     `destructive` maps to INK, not a red. The design law allows one
+     non-neutral pair in the whole system (--color-live, for publish state);
+     everything else earns hierarchy from ink and weight. So shadcn's
+     destructive Button variant renders as the same dark button the studio's
+     delete already used, and no red enters the palette.
+
+     `border` and `input` are NOT the same token. Structural rules keep the
+     quiet hairline; controls you type into get the visible one. shadcn ships
+     them as one value and that is what makes its forms wash out on a light
+     ground. */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-primary: var(--color-ink);
+  --color-primary-foreground: var(--color-on-dark);
+  --color-secondary: var(--color-surface-warm);
+  --color-secondary-foreground: var(--color-ink);
+  --color-accent: var(--color-surface-alt);
+  --color-accent-foreground: var(--color-ink);
+  --color-muted-foreground: var(--color-muted-soft);
+  --color-popover: var(--color-canvas);
+  --color-popover-foreground: var(--color-ink);
+  --color-border: var(--color-hairline);
+  --color-input: var(--color-field-edge);
+  --color-ring: var(--color-ink);
+  --color-destructive: var(--color-ink);
+
   --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* -------------------------------------------------------------------
@@ -126,6 +176,21 @@
 :root {
   --background: var(--color-canvas);
   --foreground: var(--color-ink);
+
+  /* The public header's height, and the offset everything that pins beneath
+     it must use.
+
+     A token because it already drifted once. The bar was h-16 (64px) until
+     the music pill needed more room and it grew to h-18 (72px) in 18f91ae —
+     but the two things that stick UNDER it, the feed's category row and the
+     detail page's meta rail, kept their hardcoded `top-16`. That left them
+     pinned 8px too high, tucked beneath a z-50 header that painted over their
+     top edge, so the filter row looked clipped and sat on the cards instead
+     of above them.
+
+     Change the header's height here and both followers move with it. Nothing
+     in the app should say 64 or 72 again. */
+  --nav-h: 4.5rem;
 
   /* Height of the chrome a board's header pins beneath: the panel's own
      header (72px) plus the 1px rule under it. The dark toolbar is NOT counted
@@ -218,6 +283,55 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Number inputs lose their spinners.
+
+   They are browser chrome — no class reaches them, only these two
+   pseudo-elements do — and they were part of why the studio's form read as
+   unstyled. A four-digit year is also not something anyone wants to step
+   through one click at a time. */
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* The Select popover's open/close.
+
+   shadcn ships these as `animate-in fade-in-0 zoom-in-95` utilities, which
+   come from tw-animate-css — a package this project does not have, so those
+   classes were inert. Rather than add a second animation system, the popover
+   is animated here on its own data-state, using the duration and easing
+   tokens from docs/MOTION.md like everything else.
+
+   Transform and opacity only, and the exit is shorter than the entrance,
+   which are the first and third of that document's three rules. */
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+}
+
+@keyframes select-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+}
+
+[data-slot='select-content'][data-state='open'] {
+  animation: select-in var(--dur-base) var(--ease-entrance);
+}
+
+[data-slot='select-content'][data-state='closed'] {
+  animation: select-out var(--dur-base-out) var(--ease-exit) forwards;
 }
 
 /* The masonry positions cards absolutely; nothing should cause sideways

@@ -1,5 +1,5 @@
 import { getSettingsEntry, listProjects } from '@/lib/preview'
-import { applyOrder } from '@/lib/admin/order'
+import { boardOrder } from '@/lib/admin/order'
 import ProjectsBoard from '@/components/admin/projects-board'
 
 /** Uncached preview read by design — see the note in the (studio) layout. */
@@ -13,12 +13,14 @@ export default async function AdminProjectsPage() {
   // arrangement you just set was nowhere visible in the place you spend the
   // most time.
   //
-  // Drafts are not in projectOrder, so applyOrder ranks them last, newest
-  // first among themselves. That is the honest position: they have no place in
-  // the feed's sequence yet, because they are not in the feed.
+  // Drafts lead, newest first; everything published keeps exactly the feed's
+  // sequence. They used to rank LAST, because they are not in projectOrder and
+  // applyOrder sends unlisted ids to the end — which meant a project you had
+  // just created landed below thirty you were not working on. See boardOrder
+  // for why this does not put the board out of step with the site.
   const order = Array.isArray(settings?.fields.projectOrder)
     ? (settings.fields.projectOrder as string[])
     : []
 
-  return <ProjectsBoard projects={applyOrder(projects, order)} />
+  return <ProjectsBoard projects={boardOrder(projects, order)} />
 }

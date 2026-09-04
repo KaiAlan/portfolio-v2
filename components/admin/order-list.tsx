@@ -10,6 +10,7 @@ import type { AdminProject } from '@/lib/preview'
 import BoardHeader from './board-header'
 import ColumnPicker, { useBoardColumns } from './column-picker'
 import ProjectCard, { ProjectGrid } from './project-card'
+import { Button } from '@/components/ui/button'
 
 /** Native drag-and-drop, no library — same habit as the shots strip.
  *
@@ -107,14 +108,14 @@ const OrderList = ({ projects }: { projects: AdminProject[] }) => {
             {error ?? (saved ? 'Saved.' : '')}
           </span>
           <ColumnPicker columns={columns} onChange={choose} />
-          <button
+          <Button
             type="button"
             disabled={!dirty || isPending}
             onClick={save}
-            className="type-button rounded-pill bg-ink px-5 py-2.5 whitespace-nowrap text-on-dark transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="whitespace-nowrap"
           >
             {isPending ? 'Saving…' : 'Save order'}
-          </button>
+          </Button>
         </>
       }
     />

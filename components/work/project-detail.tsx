@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { lightboxAlreadyOpen, useLightbox } from './lightbox-context'
 import MetaRail from './meta-rail'
 import ShotMedia from './shot-media'
+import { Button } from '@/components/ui/button'
 
 /**
  * The project view: a detail panel beside a scrolling column of shots.
@@ -104,7 +105,7 @@ const ProjectDetail = ({ project, visibleMetaRows, variant = 'page' }: ProjectDe
                 'lg:transition-transform lg:duration-(--dur-slow) lg:ease-(--ease-standard)',
                 shown ? 'lg:translate-x-0' : 'lg:-translate-x-full',
               ]
-            : 'lg:sticky lg:top-16 lg:self-start',
+            : 'lg:sticky lg:top-(--nav-h) lg:self-start',
         )}
       >
         {isModal && lightbox && (
@@ -198,15 +199,17 @@ type ControlButtonProps = {
 }
 
 const ControlButton = ({ onClick, label, disabled = false, children }: ControlButtonProps) => (
-  <button
+  <Button
     type="button"
+    variant="secondary"
+    size="icon"
     aria-label={label}
     disabled={disabled}
     onClick={onClick}
-    className="flex size-9 items-center justify-center rounded-pill bg-surface-warm text-ink transition-opacity hover:opacity-70 disabled:pointer-events-none disabled:opacity-30"
+    className="disabled:pointer-events-none disabled:opacity-30"
   >
     {children}
-  </button>
+  </Button>
 )
 
 export default ProjectDetail

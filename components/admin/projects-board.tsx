@@ -5,6 +5,7 @@ import type { AdminProject } from '@/lib/preview'
 import BoardHeader from './board-header'
 import ColumnPicker, { useBoardColumns } from './column-picker'
 import ProjectCard, { ProjectGrid } from './project-card'
+import { Button } from '@/components/ui/button'
 
 /**
  * The Projects board.
@@ -25,12 +26,9 @@ const ProjectsBoard = ({ projects }: { projects: AdminProject[] }) => {
         right={
           <>
             <ColumnPicker columns={columns} onChange={choose} />
-            <Link
-              href="/admin/projects/new"
-              className="type-button rounded-pill bg-ink px-5 py-2.5 whitespace-nowrap text-on-dark transition-opacity hover:opacity-90"
-            >
-              Add Project
-            </Link>
+            <Button asChild className="whitespace-nowrap">
+              <Link href="/admin/projects/new">Add Project</Link>
+            </Button>
           </>
         }
       />

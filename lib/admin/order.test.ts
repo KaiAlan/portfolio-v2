@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyOrder, moveItem, targetForInsertion, toIdArray } from './order'
+import { applyOrder, boardOrder, moveItem, targetForInsertion, toIdArray } from './order'
 
 describe('moveItem', () => {
   it('moves an item forward', () => {
@@ -92,5 +92,38 @@ describe('applyOrder', () => {
     const input = [{ id: 'a' }, { id: 'b' }]
     applyOrder(input, ['b', 'a'])
     expect(input).toEqual([{ id: 'a' }, { id: 'b' }])
+  })
+})
+
+describe('boardOrder', () => {
+  const p = (id: string, state: 'draft' | 'live' | 'live-edited') => ({ id, state })
+
+  it('puts drafts first and the rest in the feed’s order', () => {
+    const items = [p('a', 'live'), p('d1', 'draft'), p('b', 'live'), p('d2', 'draft')]
+    expect(boardOrder(items, ['b', 'a']).map((x) => x.id)).toEqual(['d1', 'd2', 'b', 'a'])
+  })
+
+  it('keeps drafts newest-first, i.e. the order they arrived in', () => {
+    const items = [p('newest', 'draft'), p('older', 'draft')]
+    expect(boardOrder(items, []).map((x) => x.id)).toEqual(['newest', 'older'])
+  })
+
+  // The invariant the divergence must not break.
+  it('leaves published projects in exactly applyOrder’s sequence', () => {
+    const items = [p('a', 'live'), p('b', 'live-edited'), p('c', 'live')]
+    const order = ['c', 'a', 'b']
+    expect(boardOrder(items, order).map((x) => x.id)).toEqual(
+      applyOrder(items, order).map((x) => x.id),
+    )
+  })
+
+  it('still ranks an unlisted PUBLISHED project last, matching the feed', () => {
+    const items = [p('new-live', 'live'), p('a', 'live')]
+    expect(boardOrder(items, ['a']).map((x) => x.id)).toEqual(['a', 'new-live'])
+  })
+
+  it('a draft that has been given a rank still leads', () => {
+    const items = [p('a', 'live'), p('d', 'draft')]
+    expect(boardOrder(items, ['a', 'd']).map((x) => x.id)).toEqual(['d', 'a'])
   })
 })

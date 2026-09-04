@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 /**
  * notFound() in an on-demand dynamic segment is a SOFT 404: Cache
@@ -15,12 +16,12 @@ const ProjectNotFound = () => (
     <p className="type-body text-muted">
       It may have been unpublished, or the link may have changed.
     </p>
-    <Link
+    <Button asChild className="mt-2">
+      <Link
       href="/"
-      className="type-button mt-2 rounded-pill bg-ink px-4 py-2 text-on-dark transition-opacity hover:opacity-90"
-    >
-      Back to work
-    </Link>
+      
+    >Back to work</Link>
+    </Button>
   </main>
 )
 

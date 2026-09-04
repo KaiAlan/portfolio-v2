@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { deleteShot, reorderShots, setCover } from '@/app/admin/actions'
 import { moveItem, toIdArray } from '@/lib/admin/order'
 import { removeShot } from '@/lib/admin/shots'
-import type { PublishState } from '@/lib/admin/publish-state'
+import { isOffSite, type VisibleState } from '@/lib/admin/publish-state'
 import type { AdminShot } from '@/lib/preview'
 import ShotsStrip from './shots-strip'
 import { Button } from '@/components/ui/button'
@@ -45,7 +45,7 @@ const ShotCanvas = ({
   projectId: string
   shots: AdminShot[]
   coverId?: string
-  state: PublishState
+  state: VisibleState
 }) => {
   const [shots, setShots] = useState(initial)
   const [cover, setCoverState] = useState<string | null>(initialCover ?? null)
@@ -142,7 +142,10 @@ const ShotCanvas = ({
     }
   }, [shots, selected?.id])
 
-  const isLive = state !== 'draft'
+  // Not `state !== 'draft'`: a HIDDEN project is published in Contentful but
+  // off the site, so warning that a deletion "leaves the site straight away"
+  // would be false. isOffSite covers both draft and hidden.
+  const isLive = !isOffSite(state)
 
   return (
     <div className="flex flex-col gap-3">

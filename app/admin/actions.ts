@@ -552,6 +552,101 @@ export async function deleteShot(projectId: string, shotId: string): Promise<Del
   return warning ? { warning } : {}
 }
 
+export type DeleteProjectState = { error?: string; warning?: string }
+
+/** Destroys a project, its shots, and the images under them.
+ *
+ *  **Gated on the project being off the site**, and that gate is enforced here
+ *  rather than only in the UI. A hidden button is a suggestion; this is the
+ *  thing that actually stops a live project from being deleted out from under
+ *  the feed, and it re-reads the entry rather than trusting what the client
+ *  believed when it rendered.
+ *
+ *  Off-site means `fields.published === false` OR never published at all. Note
+ *  `publishState(sys)` is NOT the right question — `unpublishProject` leaves
+ *  the entry published in Contentful on purpose, so a hidden project still
+ *  reads as 'live' on that axis. See visibleState.
+ *
+ *  Order is the same rule `deleteShot` pays for, one level up: **unlink first,
+ *  destroy second, and destroy the project LAST.** Emptying `shots` and
+ *  `coverShot` before touching anything means a failure partway through leaves
+ *  orphaned shot entries — invisible, recoverable, costing nothing — rather
+ *  than a project pointing at records that no longer exist. Deleting the
+ *  project first would strand every shot under it with no way to find them.
+ *
+ *  Everything after the unlink is a WARNING, never an error: the project is
+ *  already gone from the studio and the site by then, and a caller that
+ *  retried would be retrying work that already succeeded.
+ *
+ *  No republish is needed, unlike deleteShot's cover case. A project that is
+ *  off the site is not in `getProjects()` at all, so nothing the public
+ *  renders can be pointing at it. */
+export async function deleteProject(id: string): Promise<DeleteProjectState> {
+  const project = await getRawProject(id)
+  if (!project) return { error: 'That project no longer exists.' }
+
+  if (project.fields.published === true) {
+    return { error: 'Unpublish this project before deleting it.' }
+  }
+
+  const shotIds = linkIds(project.fields.shots)
+
+  // Collect the assets BEFORE the shots are destroyed — once a shot entry is
+  // gone there is nothing left to say which image belonged to it.
+  const assetIds = new Map<string, string>()
+  for (const shotId of shotIds) {
+    const shot = (project.fields.shots as { sys?: { id?: string }; fields?: { image?: { sys?: { id?: string } } } }[])
+      .find((s) => s?.sys?.id === shotId)
+    const assetId = shot?.fields?.image?.sys?.id
+    if (assetId) assetIds.set(shotId, assetId)
+  }
+
+  // Unlink first. After this the project holds nothing, so whatever happens
+  // below cannot leave it referencing a deleted record.
+  try {
+    await updateEntry(id, { shots: [], coverShot: null }, project.sys.updatedAt)
+  } catch (error) {
+    if (error instanceof VersionConflictError) {
+      return { error: 'This project changed elsewhere. Reload before deleting.' }
+    }
+    throw error
+  }
+
+  let warning: string | undefined
+  const failures: string[] = []
+
+  for (const shotId of shotIds) {
+    try {
+      await deleteEntry(shotId)
+      const assetId = assetIds.get(shotId)
+      // Same guard deleteShot uses: an asset another shot still points at is
+      // not ours to destroy. In practice uploads are one asset per shot, so
+      // this is a safety net rather than an expectation.
+      if (assetId && !(await assetInUseElsewhere(assetId, shotId))) {
+        await deleteAsset(assetId)
+      }
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  try {
+    await deleteEntry(id)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return {
+      warning: `The project was emptied but could not be deleted: ${detail}. It is no longer on the site; remove it in Contentful.`,
+    }
+  }
+
+  if (failures.length) {
+    warning = `The project was deleted, but ${failures.length} of its ${shotIds.length} shots could not be cleaned out of Contentful. First error: ${failures[0]}`
+  }
+
+  invalidate('projects')
+  return warning ? { warning } : {}
+}
+
 /** `coverShot` is its own reference field, so choosing a cover never reorders
  *  `shots` — the two are independent writes. */
 export async function setCover(projectId: string, shotId: string): Promise<{ error?: string }> {

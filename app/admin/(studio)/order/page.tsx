@@ -8,9 +8,11 @@ export const instant = false
 export default async function OrderPage() {
   const [projects, settings] = await Promise.all([listProjects(), getSettingsEntry()])
 
-  // Drafts are excluded: they are not in the feed, so their position in it is
-  // not yet a decision anyone can make.
-  const live = projects.filter((p) => p.state !== 'draft')
+  // Only what the feed actually renders. Drafts were never on it and hidden
+  // projects have been taken off it, so neither has a position in it anyone
+  // can meaningfully decide. `published` is the same field getProjects()
+  // filters on, so this list is exactly the feed's.
+  const live = projects.filter((p) => p.published && p.state !== 'draft')
 
   // listProjects() returns newest-first. Showing that while the feed serves
   // the saved order would make the panel disagree with the thing it edits, so

@@ -5,7 +5,7 @@
  */
 import 'server-only'
 import { createClient } from 'contentful'
-import { publishState, type PublishState } from './admin/publish-state'
+import { visibleState, type VisibleState } from './admin/publish-state'
 import { imageUrl } from './media'
 
 export type RawEntry = {
@@ -25,7 +25,12 @@ export type AdminProject = {
   slug: string
   category: string
   tags: string[]
-  state: PublishState
+  /** What the studio should SAY — includes 'hidden', which publishState
+   *  cannot express. See visibleState. */
+  state: VisibleState
+  /** `fields.published`: whether the SITE renders it. Distinct from whether
+   *  the entry is published in Contentful. */
+  published: boolean
   coverUrl?: string
   updatedAt: string
 }
@@ -70,7 +75,8 @@ export async function listProjects(): Promise<AdminProject[]> {
       tags: Array.isArray(e.fields.tags)
         ? e.fields.tags.filter((t): t is string => typeof t === 'string')
         : [],
-      state: publishState(e.sys),
+      published: e.fields.published === true,
+      state: visibleState(e.sys, e.fields.published === true),
       coverUrl: coverUrlOf(e.fields),
       updatedAt: e.sys.updatedAt,
     }

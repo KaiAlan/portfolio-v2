@@ -96,7 +96,7 @@ describe('applyOrder', () => {
 })
 
 describe('boardOrder', () => {
-  const p = (id: string, state: 'draft' | 'live' | 'live-edited') => ({ id, state })
+  const p = (id: string, state: 'draft' | 'live' | 'live-edited' | 'hidden') => ({ id, state })
 
   it('puts drafts first and the rest in the feed’s order', () => {
     const items = [p('a', 'live'), p('d1', 'draft'), p('b', 'live'), p('d2', 'draft')]
@@ -120,6 +120,11 @@ describe('boardOrder', () => {
   it('still ranks an unlisted PUBLISHED project last, matching the feed', () => {
     const items = [p('new-live', 'live'), p('a', 'live')]
     expect(boardOrder(items, ['a']).map((x) => x.id)).toEqual(['a', 'new-live'])
+  })
+
+  it('does NOT lift a hidden project — it keeps its rank', () => {
+    const items = [p('a', 'live'), p('h', 'hidden'), p('d', 'draft')]
+    expect(boardOrder(items, ['h', 'a']).map((x) => x.id)).toEqual(['d', 'h', 'a'])
   })
 
   it('a draft that has been given a rank still leads', () => {

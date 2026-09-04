@@ -17,6 +17,11 @@ const buttonVariants = cva(
            Publish: the single action whose effect reaches the public site.
            Nothing else earns a colour — see the design note in globals.css. */
         live: "bg-live text-live-ink hover:bg-live/85",
+        /* The other end of the same axis, and the ONLY red in the system.
+           Reserved for irreversible destruction — see --color-danger. Note
+           shadcn's own `destructive` variant is deliberately NOT this: it
+           stays mapped to ink, so nothing picks up red by default. */
+        danger: "bg-danger text-danger-ink hover:bg-danger/80",
         ghost: "text-muted hover:bg-accent hover:text-ink",
         link: "text-primary underline-offset-4 hover:underline",
       },

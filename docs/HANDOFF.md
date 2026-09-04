@@ -102,6 +102,66 @@ meant editing code.
   characters, not the usual 34 — `parsePlaylistId`'s pattern is deliberately
   loose for exactly this reason. Don't "fix" it by asserting a length.
 
+### Deleting a project, and the "Live" lie it uncovered (2026-09-04)
+
+A project can now be deleted outright, gated behind unpublishing it first.
+
+**The gate needed a fix before it could exist.** `unpublishProject` does not
+Contentful-unpublish anything — it sets `fields.published = false` and
+*publishes that change*, deliberately, so the entry stays resolvable by the CDA
+for anything still linking to it. But `publishState()` derives from
+`sys.publishedVersion`/`publishedAt`, so it still returned `'live'` afterwards.
+**The studio was showing "Live" for projects that were off the site**, and kept
+offering Unpublish on something already unpublished. Nothing tracked
+`fields.published` at all — it was on neither `AdminProject` nor the editor.
+
+`visibleState(sys, published)` in `lib/admin/publish-state.ts` resolves the two
+axes and adds a fourth state, **Hidden** (neutral pill — hiding is reversible,
+and red here is reserved). `publishState` is deliberately left alone: its other
+caller, `deleteShot` deciding whether a promoted cover needs republishing,
+genuinely means the Contentful axis, and a hidden project *is* still published
+there.
+
+Knock-on fixes from surfacing the flag:
+- The **Order board** now filters `p.published && p.state !== 'draft'` rather
+  than `!== 'draft'`, so hidden projects no longer appear on a board that
+  arranges the feed they are not in.
+- **ShotCanvas** computes `isLive` with `isOffSite()`, so deleting a shot from
+  a *hidden* project no longer warns that it "leaves the site straight away".
+- `boardOrder` lifts drafts only. A hidden project keeps its rank, so
+  republishing it puts it back where it was.
+
+**The delete itself** (`deleteProject`) mirrors `deleteShot`'s hard-won rule one
+level up: **unlink first, destroy second, project last.** Emptying `shots` and
+`coverShot` before touching anything means a failure partway leaves orphaned
+shot entries — invisible and recoverable — rather than a project pointing at
+records that are gone. Deleting the project first would strand every shot under
+it with no way to find them. Image assets are collected BEFORE their shots are
+destroyed, because once a shot entry is gone nothing says which image was its.
+Anything failing after the unlink is a warning, never an error. No republish is
+needed (unlike deleteShot's cover case): an off-site project is not in
+`getProjects()` at all.
+
+**The gate is enforced server-side**, not just by hiding the button — the action
+re-reads the entry and refuses if `fields.published === true`.
+
+**Red is the second non-neutral pair, and the exception to the rule** in the
+`--color-live` block. `--color-danger` / `--color-danger-ink` (5.13:1, clears
+AA) is reserved for irreversible destruction only. It is **not** shadcn's
+`destructive` variant, which stays mapped to ink so nothing picks up red by
+accident; the Button has its own explicit `danger` variant. Unpublish stays a
+ghost because it is undoable. If a third thing ever wants red, it almost
+certainly wants ink.
+
+**Verified** against a production build, driving the real UI: a disposable
+project with 2 shots was created, and the button set was read at each stage —
+draft (Delete offered), published (Delete hidden, Unpublish offered), unpublished
+(Delete offered again, proving `visibleState` reports Hidden). The confirm named
+"its 2 shots and their images", Cancel dismissed it, and Delete removed the
+project. Checked in Contentful afterwards: the entry returns NotFound, zero
+`zz-test` assets remain, and an orphan audit shows **109 shots, 109 linked, 0
+orphaned**.
+
 ### shadcn adopted, and three bugs it surfaced (2026-09-04)
 
 `components.json` had been sitting in the repo since `3e9360e` — shadcn was

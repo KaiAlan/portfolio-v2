@@ -2,7 +2,7 @@
  *  per-entry order field, which would be 80 writes instead of 1.
  *  IDs, not slugs: a slug rename must not silently drop a project to the end. */
 
-import type { PublishState } from './publish-state'
+import type { VisibleState } from './publish-state'
 
 export function moveItem<T>(items: T[], from: number, to: number): T[] {
   const next = [...items]
@@ -68,8 +68,13 @@ export function applyOrder<T extends { id: string }>(items: T[], order: string[]
  *  The divergence is confined to entries the feed cannot see.
  *
  *  Sort is stable, and `listProjects()` returns newest-first, so among
- *  themselves the drafts stay newest-first without a second comparator. */
-export function boardOrder<T extends { id: string; state: PublishState }>(
+ *  themselves the drafts stay newest-first without a second comparator.
+ *
+ *  'hidden' is NOT lifted with them. A hidden project is one you deliberately
+ *  took off the site, not one you just made, and it usually still holds a rank
+ *  in `projectOrder` from when it was live — so it keeps that position and
+ *  goes back where it was if you republish it. */
+export function boardOrder<T extends { id: string; state: VisibleState }>(
   items: T[],
   order: string[],
 ): T[] {

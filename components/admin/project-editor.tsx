@@ -1,16 +1,18 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { useActionState, useState, useTransition } from 'react'
 import {
+  deleteProject,
   publishProject,
   saveProject,
   unpublishProject,
   type SaveState,
   type UploadedAsset,
 } from '@/app/admin/actions'
-import type { PublishState } from '@/lib/admin/publish-state'
+import { isOffSite, type VisibleState } from '@/lib/admin/publish-state'
 import type { AdminShot } from '@/lib/preview'
 import DropZone from './drop-zone'
 import NewProjectCanvas from './new-project-canvas'
@@ -51,7 +53,7 @@ const ProjectEditor = ({
   coverId,
 }: {
   values: ProjectFormValues
-  state: PublishState
+  state: VisibleState
   shots: AdminShot[]
   coverId?: string
 }) => {
@@ -64,7 +66,33 @@ const ProjectEditor = ({
   // canvas because the FORM needs them too — they ride along as a hidden field
   // so one Save creates the project and attaches them together.
   const [pendingShots, setPendingShots] = useState<UploadedAsset[]>([])
+  // Deleting is two clicks on purpose: the button arms a confirmation panel
+  // rather than doing anything. Nothing here is undoable.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteWarning, setDeleteWarning] = useState<string>()
   const isNew = values.id === 'new'
+
+  // Delete is offered only once the project is off the site — a draft, or one
+  // that has been unpublished. The action re-checks this server-side; this
+  // only decides whether the button is on screen.
+  const canDelete = !isNew && isOffSite(publish)
+
+  const router = useRouter()
+  const remove = () =>
+    startTransition(async () => {
+      setPublishError(undefined)
+      setDeleteWarning(undefined)
+      const result = await deleteProject(values.id)
+      if (result.error) {
+        setPublishError(result.error)
+        setConfirmingDelete(false)
+        return
+      }
+      // A warning means it IS gone and something after that failed, so leaving
+      // the editor open on a deleted project would be the wrong thing.
+      if (result.warning) setDeleteWarning(result.warning)
+      router.push('/admin')
+    })
 
   const run = (fn: (id: string) => Promise<{ error?: string }>) =>
     startTransition(async () => {
@@ -106,7 +134,7 @@ const ProjectEditor = ({
             {busy ? 'Publishing…' : 'Publish'}
           </Button>
         )}
-        {!isNew && publish !== 'draft' && (
+        {!isNew && !isOffSite(publish) && (
           <Button
             type="button"
             disabled={pending || busy}
@@ -116,6 +144,43 @@ const ProjectEditor = ({
             Unpublish
           </Button>
         )}
+        {canDelete && (
+          <Button
+            type="button"
+            disabled={pending || busy}
+            onClick={() => setConfirmingDelete(true)}
+            variant="danger"
+          >
+            Delete
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+
+  /* The confirmation, not a browser confirm(): it has to name what is about to
+     be destroyed, and a native dialog cannot. Same call shot-canvas makes for
+     deleting a shot, one level up — and the counts come from the shots this
+     editor already has in hand, so the number you read is the number that goes.
+
+     Danger tone is on the confirm button only. The panel itself stays neutral;
+     a red slab across the top of the editor would shout before you have
+     decided anything. */
+  const confirmPanel = confirmingDelete && (
+    <div className="flex flex-col gap-3 rounded-card border border-danger-ink/25 bg-danger/40 p-4">
+      <p className="type-body text-ink">Delete “{values.title || 'this project'}”?</p>
+      <p className="type-meta text-muted">
+        The project{shots.length > 0 && `, its ${shots.length} ${shots.length === 1 ? 'shot' : 'shots'}`}
+        {shots.length > 0 && ' and their images'} will be removed from Contentful for good. There is
+        no undo.
+      </p>
+      <div className="flex items-center gap-3">
+        <Button type="button" variant="danger" disabled={busy} onClick={remove}>
+          {busy ? 'Deleting…' : 'Delete permanently'}
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => setConfirmingDelete(false)}>
+          Cancel
+        </Button>
       </div>
     </div>
   )
@@ -157,6 +222,8 @@ const ProjectEditor = ({
        here; without it the title sits flush against the panel's nav rule. */
     <div className="flex flex-col gap-6 pt-6">
       {header}
+      {confirmPanel}
+      {deleteWarning && <p className="type-meta text-muted">{deleteWarning}</p>}
 
       {/* The work on the left, the controls on the right. A fixed right track
           rather than a fraction: the form's inputs stop being readable much

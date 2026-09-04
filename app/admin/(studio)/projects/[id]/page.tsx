@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import ProjectEditor from '@/components/admin/project-editor'
 import type { ProjectFormValues } from '@/components/admin/project-fields'
 import { coverShotId, getRawProject, shotsOf } from '@/lib/preview'
-import { publishState } from '@/lib/admin/publish-state'
+import { visibleState } from '@/lib/admin/publish-state'
 
 /** Uncached preview read by design — see the note in the (studio) layout. */
 export const instant = false
@@ -45,7 +45,11 @@ export default async function ProjectEditPage({ params }: PageProps<'/admin/proj
   return (
     <ProjectEditor
       values={values}
-      state={publishState(entry.sys)}
+      // visibleState, not publishState: unpublishProject leaves the entry
+      // published in Contentful and only flips `fields.published`, so
+      // publishState would report a hidden project as 'live' — and the editor
+      // would keep offering Unpublish while hiding Delete.
+      state={visibleState(entry.sys, entry.fields.published === true)}
       shots={shotsOf(entry)}
       coverId={coverShotId(entry)}
     />

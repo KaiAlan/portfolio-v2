@@ -43,6 +43,23 @@
   --color-live: #d8f0e2;
   --color-live-ink: #2c7a52;
 
+  /* The SECOND non-neutral pair, added 2026-09-04, and the exception that
+     proves the rule above.
+
+     The block on --color-live says the palette spends one colour, on publish
+     state. This is the other end of the same axis: --color-live marks the
+     action that puts work on the site, and this marks the one action that
+     destroys it irrecoverably. Both are facts about existence, and neither is
+     decoration.
+
+     Reserved for IRREVERSIBLE destruction only — deleting a project and the
+     shots and images under it. Not for errors, not for validation, not for
+     "unpublish" (which is undoable and stays a ghost button), and not for
+     shadcn's `destructive` variant in general, which is still mapped to ink.
+     If a third thing ever wants red, it almost certainly wants ink instead. */
+  --color-danger: #f6dcdc;
+  --color-danger-ink: #a8322c;
+
   /* Borders */
   --color-hairline: #e0e0e0;
   --color-border-strong: #d0d0d0;
